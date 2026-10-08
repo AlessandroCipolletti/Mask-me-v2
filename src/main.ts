@@ -15,6 +15,19 @@ try {
   log('app_boot');
 
   if (
+    location.pathname === '/provider' ||
+    (import.meta.env.MODE !== 'production' &&
+      location.pathname === '/dev/generation')
+  ) {
+    void import('./provider/ProviderWorkspace')
+      .then(({ mountProviderWorkspace }) =>
+        mountProviderWorkspace(app, location.pathname === '/dev/generation'),
+      )
+      .catch(() => {
+        app.textContent =
+          'The provider connection page could not load. Reload and try again.';
+      });
+  } else if (
     import.meta.env.MODE !== 'production' &&
     location.pathname === '/dev/avatar'
   ) {
@@ -39,6 +52,11 @@ try {
       title: 'Avatar Studio',
       eyebrow: 'Camera / M1',
     });
+    const providerLink = document.createElement('a');
+    providerLink.href = '/provider';
+    providerLink.textContent = 'Connect fal API key';
+    providerLink.className = 'provider-back';
+    workspace.main.append(providerLink);
     if (config.debug && import.meta.env.MODE !== 'production') {
       const note = document.createElement('p');
       note.className = 'debug-note';

@@ -1,8 +1,40 @@
 # Project status
 
-## Current milestone: M2 — Three.js runtime spike
+## Current milestone: M3 — fal browser integration
 
-M0 and M1 are accepted. M2 implementation is complete pending the focused Safari/Chrome visual and performance checks below. M3 has not started. The external specification pack at `/Users/cippo/Desktop/avatar3d-codex-spec-v3/` remains authoritative.
+M0, M1 and M2 are accepted. M3 implementation is complete pending the real Safari/Chrome connection checks below. M4 has not started. The external specification pack at `/Users/cippo/Desktop/avatar3d-codex-spec-v3/` remains authoritative.
+
+| M3 requirement                                             | Status                | Evidence / remaining check                                                                                                                                                                                                                                                                             |
+| ---------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Volatile user-owned credential and no durable persistence  | VERIFIED              | `VolatileCredential` is page-owned; clear, pagehide, and disposal erase its reference and input. Static inspection found no key in storage, URLs, configuration, logs, or global debug state. Focused tests cover clear and malformed key input.                                                       |
+| Key entry UI and M3 `/dev/generation` slice                | TESTED                | `/provider` and `/dev/generation` booted in the in-app Chromium browser with key absent and connection action disabled. The debug page contains only M3 transport tooling.                                                                                                                             |
+| Authenticated, read-only direct fal connection check       | DEFERRED_VERIFICATION | Pricing URL, `Key` header, no-store, omitted credentials, fetch receiver and response schema are fixture-tested. A reported instant pre-network failure was reproduced and fixed by calling native `fetch` with the browser global receiver. User must retest with their own key in Safari and Chrome. |
+| Model-independent provider interface and queue transport   | VERIFIED              | `ProviderClient` accepts adapter-supplied model ID, input and parser; `FalClient` handles submit/status/result with request ID and status validation. Mock queue lifecycle test passes.                                                                                                                |
+| Cancellation and safe retry policy                         | VERIFIED              | Abort stops local polling; queue cancellation uses best-effort PUT after known request ID; idempotent GETs have bounded retries. POSTs are never automatically retried. Focused tests cover cancellation and no POST retry.                                                                            |
+| Error normalization, diagnostics and malformed responses   | VERIFIED              | Fixed safe messages cover provider and browser errors. Allowlisted diagnostics show click/fetch/response/failure stages, HTTP status, duration and a safe browser category without key or raw data. Mock tests cover failures and log redaction.                                                       |
+| Explicit user action and no paid automated request         | VERIFIED              | The only M3 UI request is a click-triggered read-only pricing GET. Tests inject fake `fetch`; no test or build uses a real key or executes a model.                                                                                                                                                    |
+| Direct browser compatibility and fal CORS in Safari/Chrome | DEFERRED_VERIFICATION | Native `fetch` avoids Chromium-only APIs; real browser response and CORS policy require user verification.                                                                                                                                                                                             |
+| Production/debug separation and later model boundary       | VERIFIED              | Production exposes `/provider`; `/dev/generation` remains non-production. No model-specific generator, image upload, or reconstruction path is present. Production/debug build inspection required after final validation.                                                                             |
+
+M3 status counts: **VERIFIED 6 · TESTED 1 · DEFERRED_VERIFICATION 2 · BLOCKED 0 · OPEN_IMPLEMENTATION 0**.
+
+### Manual M3 verification requested
+
+Run `pnpm dev`; open `/provider` in Safari first, then Chrome. Paste an **API-scoped** fal key, press **Use key in this page**, then **Check connection**. Confirm success or send the **Connection diagnostics** lines, any browser Console CORS error, and browser/version (do not send the key). In Network, select **All** and enable **Preserve log**. Confirm **Clear key**, reload, and back/forward navigation require re-entry. `/dev/generation` offers the same M3 check in development. No paid model action is needed.
+
+### M3 decisions and known issues
+
+- [ADR-004](docs/adr/004-m3-fal-browser-boundary.md): page-lifetime BYOK credential, native direct transport, authenticated read-only probe, queue lifecycle, no automatic POST retry.
+- fal CORS and real key behavior in Safari/Chrome remain unverified until the user tests them. After the fetch receiver fix, the in-app browser records `fetch_start` and a 226 ms `failed_to_fetch` with no HTTP response; its network environment cannot establish whether fal CORS or connectivity caused that result.
+- Queue cancellation is best effort. A running job can still complete or be billed by fal. No real model job was submitted in M3.
+
+### M3 validation
+
+`pnpm check` passes strict typecheck, ESLint, Prettier, 36 focused tests, production build, and debug build. `git diff --check` passes. The in-app Chromium browser loaded both M3 pages and exercised the diagnostics with a dummy key. Production output contains the provider page but no avatar, tracking, MediaPipe, model, or WASM assets; debug output retains the existing labs. No paid call or real fal credential was used.
+
+## Previous milestone: M2 — Three.js runtime spike
+
+M0 and M1 are accepted. M2 implementation was completed and accepted before M3. The following retains its original completion evidence and historical manual checks.
 
 | M2 requirement                                                   | Status                | Evidence / remaining check                                                                                                                                                                |
 | ---------------------------------------------------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

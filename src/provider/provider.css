@@ -1,0 +1,80 @@
+.provider-workspace {
+  width: min(100% - 40px, 680px);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: clamp(40px, 8vh, 96px) 0 56px;
+}
+
+.provider-label {
+  display: block;
+  margin: 30px 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.provider-entry,
+.provider-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.provider-entry {
+  flex-wrap: nowrap;
+}
+.provider-input {
+  min-width: 0;
+  flex: 1;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #b8bdb4;
+  border-radius: 8px;
+  background: #fff;
+  color: #20221f;
+  font: inherit;
+}
+
+.provider-actions {
+  margin-top: 14px;
+}
+.provider-status {
+  margin: 26px 0 6px;
+  font-weight: 600;
+}
+.provider-error {
+  color: #9d2d29;
+}
+.provider-detail,
+.provider-debug {
+  color: #555a53;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.provider-back {
+  display: inline-block;
+  margin-top: 30px;
+  color: #315c46;
+}
+
+.provider-diagnostics {
+  margin-top: 22px;
+  border-top: 1px solid #d6d9d2;
+  padding-top: 16px;
+  font-size: 14px;
+}
+
+.provider-diagnostics summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.provider-diagnostic-output {
+  overflow-x: auto;
+  max-height: 280px;
+  padding: 12px;
+  background: #e9eae5;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
