@@ -27,3 +27,7 @@ The M0 foundation deliberately does not implement camera, tracking, fal requests
 `pnpm check` passed: TypeScript typecheck, ESLint, Prettier check, 8 unit tests, production build, and debug build. The Vite development server showed the boot screen in the in-app Chromium browser. The production output contains no source map; the debug output contains a source map and debug label. CI configuration was inspected locally but has not run on GitHub yet.
 
 M0 requirement status counts: **VERIFIED 8 · TESTED 0 · DEFERRED_VERIFICATION 1 · BLOCKED 0 · OPEN_IMPLEMENTATION 0**.
+
+## Tooling follow-up
+
+Husky now runs a Prettier check against staged file contents before local commits. ESLint includes its recommended JavaScript/TypeScript rules with `eslint-config-prettier` last. CI continues to check formatting across the full project. The hook was tested with staged unformatted content and a formatted working copy; it blocked the commit candidate until the formatted file was staged. The M0 requirement counts and milestone scope are unchanged.

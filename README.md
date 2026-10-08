@@ -17,6 +17,8 @@ pnpm check
 
 `pnpm build` writes a production static site to `dist/`. `pnpm build:debug` writes a debug build with source maps and a visible mode label to `dist-debug/`. The debug build is for local engineering use and should not be deployed as the public product.
 
+ESLint uses the recommended JavaScript and TypeScript rules. Prettier owns formatting, and Husky checks the staged file contents before each local commit. Run `pnpm format`, then stage the formatted files again before committing. CI runs `pnpm format:check` across the project even when local Git hooks are skipped.
+
 Only non-secret values may use `VITE_` environment variables. The optional `VITE_PROVIDER=fal` setting identifies the intended initial provider; no provider request is made in M0. Never put a fal key or other credential in `.env` or a `VITE_` variable. User-owned credentials will be handled in volatile browser memory in M3.
 
 See [STATUS.md](STATUS.md) for milestone status and [docs/adr/001-client-foundation.md](docs/adr/001-client-foundation.md) for the foundation decision.

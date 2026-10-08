@@ -16,13 +16,17 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "format:staged": "node scripts/check-staged-format.mjs",
     "test": "vitest run",
+    "prepare": "husky",
     "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm build && pnpm build:debug"
   },
   "devDependencies": {
     "@eslint/js": "9.39.4",
     "eslint": "9.39.4",
+    "eslint-config-prettier": "10.1.8",
     "globals": "16.5.0",
+    "husky": "9.1.7",
     "prettier": "3.8.3",
     "typescript": "5.9.3",
     "typescript-eslint": "8.60.0",
