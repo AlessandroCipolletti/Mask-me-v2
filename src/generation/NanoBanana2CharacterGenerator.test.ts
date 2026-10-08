@@ -65,7 +65,7 @@ describe('NanoBanana2CharacterGenerator', () => {
     expect(result.metadata).toMatchObject({
       provider: 'fal',
       modelId: 'fal-ai/nano-banana-2/edit',
-      promptVersion: 'canonical-character-v1',
+      promptVersion: 'canonical-character-v3',
       sourcePhotoId: 'capture-1',
       providerRequestId: 'req_42',
       timestamp: '2026-01-01T00:00:00.000Z',

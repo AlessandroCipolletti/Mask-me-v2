@@ -6,7 +6,7 @@ import {
 
 describe('canonical prompt', () => {
   it('is stable, versioned product logic with identity and complete-head constraints', () => {
-    expect(CANONICAL_PROMPT_VERSION).toBe('canonical-character-v1');
+    expect(CANONICAL_PROMPT_VERSION).toBe('canonical-character-v3');
     expect(buildCanonicalPrompt()).toBe(buildCanonicalPrompt());
     const prompt = buildCanonicalPrompt();
     for (const required of [
@@ -14,7 +14,13 @@ describe('canonical prompt', () => {
       'complete three-dimensional head',
       'both ears',
       'small amount of neck',
-      'neutral relaxed expression',
+      'specific, accurate details',
+      'eyelids',
+      'hair clumps and strands',
+      'very subtle natural closed-mouth smile',
+      'slightly more attractive in presentation',
+      'not by changing facial anatomy, skin tone, age cues',
+      'No teeth, open mouth, broad grin',
       'plain light neutral background',
       'No scenery',
       'Avoid photorealism',
