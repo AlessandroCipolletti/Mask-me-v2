@@ -1,8 +1,40 @@
 # Project status
 
-## Current milestone: M6 — Complete-head 3D reconstruction
+## Current milestone: M7 — Avatar preparation research gate
 
-M0 through M5 are accepted. M6 implementation is complete and awaits real paid reconstruction, perceptual complete-head review and Safari verification by the user. M7 has not started. The external specification pack at `/Users/cippo/Desktop/avatar3d-codex-spec-v3/` remains authoritative.
+M0–M6 are accepted. M7's **research and architectural decision are complete**; no prepared avatar or M8 builder has been implemented. The external specification pack at `/Users/cippo/Desktop/avatar3d-codex-spec-v3/` remains authoritative.
+
+| M7 requirement                                                                | Status   | Evidence / limit                                                                                                                                                                                                                                                                     |
+| ----------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Inspect the real M6 Hunyuan output, not a synthetic mesh alone                | TESTED   | Read-only probe of the user's downloaded 35.6 MB GLB: 457,430 triangles, one 4096² texture, zero morphs/skins/animations, one closed surface after exact-position welding. Asset fingerprint and methodology are in the [research record](docs/research/m7-avatar-preparation.md).   |
+| Specialized animatable-head approach (A)                                      | VERIFIED | Official GNM, Didimo and Avatar SDK capabilities assessed against preservation of the approved Hunyuan head/hair. No documented direct M6-mesh preservation route was found.                                                                                                         |
+| Standard template fitting and template-source spike (B)                       | TESTED   | Cloned public ICT FaceKit Light into a temporary directory; compared actual neutral and seven expression OBJs, verified identical topology and four facial boundary loops. Full-face patch substantially reduces outer-boundary jaw/lip motion compared with the narrow patch.       |
+| Whole-mesh topology/morph transfer feasibility (C)                            | VERIFIED | Local topology probe exposes UV-duplicated indices and closed unified surface; 53 raw position morphs would use ~183 MB before other asset data. Transfer requires semantic correspondences and new eye/mouth anatomy.                                                               |
+| Provider auto facial rig feasibility (D)                                      | VERIFIED | fal Meshy rigging schema requires a humanoid with limbs and publishes body animation, not the required facial controls. OmniFaceRig research was assessed; public inference code/API is not available from its project page. No paid request made.                                   |
+| Scored comparison and decision against all specified quality/runtime criteria | VERIFIED | [Research record](docs/research/m7-avatar-preparation.md) scores A/B/C/D/hybrid against automation, identity, 360° head/hair, blink, mouth/jaw, brows, eyes, seams, size, browser, compute, cost and risk. [ADR-010](docs/adr/010-m7-hybrid-face-preparation.md) selects the hybrid. |
+| Concrete automatic M8 implementation direction and rejection gates            | VERIFIED | ADR/research record specify immutable M6 original, browser-side fitting of ICT Light full face, independent eyes/interior, boundary motion transfer, texture projection, WebGL2 derived GLB/manifest and hard quality rejection across identities. No M8 pipeline was started.       |
+
+M7 status counts: **VERIFIED 5 · TESTED 2 · DEFERRED_VERIFICATION 0 · BLOCKED 0 · OPEN_IMPLEMENTATION 0**.
+
+### Manual M7 verification requested
+
+No browser or paid-provider test is needed for this research milestone. The user confirmed that the analyzed `original-reconstruction.glb` in Downloads (SHA-256 prefix `9e6cacfd20f6`) is the accepted M6 result. Visual fitting, seam quality and facial animation belong to M8 acceptance.
+
+### M7 decisions and known issues
+
+- [ADR-010](docs/adr/010-m7-hybrid-face-preparation.md): preserve the real Hunyuan 360° head/hair/ears/neck; fit an ICT FaceKit Light full-face semantic patch, eyes and inner mouth; bridge residual facial boundary motion through a small transition band. Keep `AvatarControlState` and `AvatarRigAdapter` provider/topology independent.
+- The exact Hunyuan-to-template fit, automatic face segmentation/orientation, texture reprojection and seam under extreme expressions are not yet demonstrated. M8 must reject bad results; the research scores are architectural estimates, not measured success rates.
+- The inspected GLB is one confirmed example. Other identities may produce different topology, UVs, materials, hair and proportions. The M8 builder must fit each asset independently and prove quality on multiple distinct reconstructions; M7 does not establish a success rate or guarantee that every generated mesh is riggable.
+- The official ICT Light assets were examined from a temporary clone and were not vendored. Its differently licensed Full model is excluded. No personal GLB/texture, API key or model data is committed.
+- The current M6 front-orientation slider is for preview only; a reliable automatic orientation/correspondence path is an M8 requirement. Dense output and morph count require real Safari/WebGL2 performance evaluation after M8 creates a derived asset.
+
+### M7 validation
+
+`node scripts/m7-inspect-glb.mjs /Users/cippo/Downloads/original-reconstruction.glb` and `node scripts/m7-inspect-facekit.mjs /private/tmp/ict-facekit-m7/FaceXModel` produced the recorded measurements. `pnpm check` passed strict typecheck, ESLint, Prettier, 83 focused tests, production build and debug build. `git diff --check` passed. Vite retained the existing >500 kB lazy Three.js viewer advisory. No paid provider call, webcam upload or M8 implementation was used.
+
+## Previous milestone: M6 — Complete-head 3D reconstruction
+
+M0 through M6 are accepted. The user reported a successful real six-view to Hunyuan reconstruction after the original M6 report below; its original statuses are retained as historical completion evidence. The external specification pack at `/Users/cippo/Desktop/avatar3d-codex-spec-v3/` remains authoritative.
 
 | M6 requirement                                               | Status                | Evidence / remaining check                                                                                                                                                                                                                                                                                                         |
 | ------------------------------------------------------------ | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
