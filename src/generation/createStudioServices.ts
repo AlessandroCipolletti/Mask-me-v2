@@ -12,16 +12,23 @@ import type {
   CanonicalImage,
   GenerationMetadata,
 } from './CharacterImageGenerator';
+import { FalReconstructionProvider } from '../reconstruction/FalReconstructionProvider';
+import {
+  ReconstructionSession,
+  type ReconstructionState,
+} from '../reconstruction/ReconstructionSession';
 
 /** Composition root: UI owns the credential lifecycle, not fal transport details. */
 export function createStudioServices(
   credential: VolatileCredential,
   changed: (state: CanonicalSessionState) => void,
   viewChanged: (state: ViewSetState) => void,
+  reconstructionChanged: (state: ReconstructionState) => void,
   onDiagnostic?: FalDiagnosticSink,
 ): {
   session: CanonicalSession;
   views: ViewSetSession;
+  reconstruction: ReconstructionSession;
   checkConnection: (signal: AbortSignal) => Promise<void>;
   recoverExisting: (
     requestId: string,
@@ -36,6 +43,12 @@ export function createStudioServices(
   return {
     session: new CanonicalSession(generator, changed),
     views: new ViewSetSession(viewGenerator, viewChanged),
+    reconstruction: new ReconstructionSession(
+      new FalReconstructionProvider(client),
+      undefined,
+      undefined,
+      reconstructionChanged,
+    ),
     checkConnection: async (signal) => {
       await client.checkConnection(signal);
     },

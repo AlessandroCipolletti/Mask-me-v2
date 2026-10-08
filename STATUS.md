@@ -1,8 +1,43 @@
 # Project status
 
-## Current milestone: M5 — Multi-view generation
+## Current milestone: M6 — Complete-head 3D reconstruction
 
-M0 through M4 are accepted. M5 implementation is complete and awaits real paid multi-view quality and Safari verification by the user. M6 has not started. The external specification pack at `/Users/cippo/Desktop/avatar3d-codex-spec-v3/` remains authoritative.
+M0 through M5 are accepted. M6 implementation is complete and awaits real paid reconstruction, perceptual complete-head review and Safari verification by the user. M7 has not started. The external specification pack at `/Users/cippo/Desktop/avatar3d-codex-spec-v3/` remains authoritative.
+
+| M6 requirement                                               | Status                | Evidence / remaining check                                                                                                                                                                                                                                                                                                         |
+| ------------------------------------------------------------ | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Six approved views and model-specific mapping                | VERIFIED              | `FalReconstructionProvider` requires `viewSetReady` and maps front, both 45° views, both profiles and rear to the six documented Hunyuan 3D Pro v3.1 fields. Mock test inspects the exact paid-job input.                                                                                                                          |
+| Explicit queue lifecycle, pause/cancel and GET-only recovery | VERIFIED              | `ReconstructionSession` records acknowledged IDs, prevents duplicate submit while pending, exposes queue stages, pauses on page exit, resumes with `ProviderClient.resume`, and retains failed results. Focused tests check recovery and no second POST.                                                                           |
+| Result parsing and safe provenance                           | VERIFIED              | Adapter validates HTTPS GLB output and records provider/model, parameters, six input URLs and request IDs, timestamps, result URL and seed where supplied. No key or image bytes enter metadata.                                                                                                                                   |
+| GLB sanitation and preview normalization                     | VERIFIED              | Local 560-byte GLB fixture parses through `GLTFLoader`; container checks reject malformed/oversized input. Scene inspection requires mesh triangles and finite, non-pathological bounds, reports mesh/material/texture counts and missing normals. Only the preview scene is centered/scaled; the original bytes remain unchanged. |
+| Download retry and original preservation                     | DEFERRED_VERIFICATION | The result URL is retained, download retry does not resubmit the model, and IndexedDB stores the original Blob plus metadata. Browser quota/CORS and real large GLB persistence need user verification; direct GLB/metadata downloads are available.                                                                               |
+| Orbitable Three.js review and local fixture lab              | TESTED                | The in-app Chromium browser loaded `src/reconstruction/fixtures/tetra.glb` in `/dev/generation` without a key or fal call. Orbitable WebGL2 canvas and inspection report appeared; no console errors were recorded. Production viewer is lazy loaded when the M6 stage is entered.                                                 |
+| Complete-head identity and multiple distinct silhouettes     | DEFERRED_VERIFICATION | A real paid model run and human review must establish true face/skull/ears/hair/neck geometry across front, profiles and rear, plus visible differences between identities. The UI blocks very thin assets and requires explicit inspection/acceptance; deterministic bounds cannot prove likeness.                                |
+| Safari provider, GLB/CORS, IndexedDB and WebGL behavior      | DEFERRED_VERIFICATION | Uses browser-standard fetch, IndexedDB and WebGL2 with resize/visibility/context handling. Real Safari and user's GPU/provider output remain manual checks.                                                                                                                                                                        |
+| Error/retry behavior and development metadata                | VERIFIED              | Mock tests cover malformed output, rejected view sets, retained known job ID, download failure/retry without another POST, and tampered recovery data. `/dev/generation` exposes model/input/result metadata, geometry report and independent local GLB loading.                                                                   |
+
+M6 status counts: **VERIFIED 5 · TESTED 1 · DEFERRED_VERIFICATION 3 · BLOCKED 0 · OPEN_IMPLEMENTATION 0**.
+
+### Manual M6 verification requested
+
+Use `pnpm dev` in Safari first, then Chrome. Start with a six-view set you have accepted. Open **Build 3D head**, then click the second **Build 3D head** button only when you intend one paid request. Confirm all six URLs appear in the submitted input and the queue status advances. Refresh after a request ID appears: the page should resume using status/result GETs, with no second POST. When the GLB arrives, orbit through front, both 45° angles, profiles and rear; check skull volume, nose/jaw/chin, ears, volumetric hair and neck, and compare two identities if you choose to pay for a second result. Test front alignment, raw GLB/metadata downloads, and refresh to confirm the original reopens from local storage. If the GLB download fails, use **Retry GLB download** and confirm no new model POST. Report browser/version, request ID, any error and screenshots of front/profile/rear; do not send the fal key.
+
+### M6 decisions and known issues
+
+- [ADR-009](docs/adr/009-m6-six-view-reconstruction.md): Hunyuan 3D Pro v3.1 six-angle adapter, exact raw GLB preservation, preview-only normalization, manual orientation and complete-head gate.
+- Real model output may be incomplete or inconsistent despite a valid GLB. No test can certify complete-head identity; a thin-axis gate catches only obvious flat assets. This is a manual M6 exit check.
+- The model's documented front input limit is 8 MB; a large upstream PNG may be rejected. Asset URLs may expire. IndexedDB can fail due to quota/privacy settings; download the original GLB and metadata when prompted. The browser rejects GLBs over 150 MB.
+- The glTF scene is treated as Y-up. Semantic front is not inferred from arbitrary topology; the user aligns it in the review without modifying the original. The raw asset has no facial rig and is not driven by `AvatarControlState`.
+- An unacknowledged POST cannot be recovered after refresh, even if the provider bills it. Remote cancellation is best effort. Real fal CORS, large-model performance and Safari persistence remain unverified.
+- The lazy Three.js viewer chunk is about 632 kB minified and triggers Vite's size advisory. It is excluded from the initial studio chunk and loads only for model review or the local GLB lab.
+
+### M6 validation
+
+`pnpm check` passes typecheck, ESLint, Prettier, 81 focused tests, production build and debug build. `git diff --check` passes. The in-app Chromium browser loaded `/dev/generation`, opened the local GLB fixture with orbit controls, showed expected geometry diagnostics and reported no console errors. No real fal key, paid reconstruction or M7 rigging code was used.
+
+## Previous milestone: M5 — Multi-view generation
+
+M0 through M4 were accepted before M5. M5 implementation was accepted; the following retains its original evidence and historical manual checks. The external specification pack at `/Users/cippo/Desktop/avatar3d-codex-spec-v3/` remains authoritative.
 
 | M5 requirement                                      | Status                | Evidence / remaining check                                                                                                                                                                                                                                     |
 | --------------------------------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

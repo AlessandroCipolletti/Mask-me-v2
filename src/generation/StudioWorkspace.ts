@@ -23,6 +23,10 @@ import { SourcePhotoStore } from './SourcePhotoStore';
 import { ViewSetStore } from './ViewSetStore';
 import { viewSetReady, type ViewSetState } from './ViewSetSession';
 import { VIEW_IDS, VIEW_LABELS, type GeneratedViewId } from './viewPrompts';
+import type { RawModelPreview } from '../reconstruction/RawModelPreview';
+import { RECONSTRUCTION_MODEL_ID } from '../reconstruction/FalReconstructionProvider';
+import type { AssetInspection } from '../reconstruction/AssetInspection';
+import { MAX_GLB_BYTES } from '../reconstruction/GlbContainer';
 import './studio.css';
 
 const SAVED_KEY_MASK = '************';
@@ -65,6 +69,7 @@ export function mountStudioWorkspace(
     credential,
     onSessionChanged,
     onViewChanged,
+    onReconstructionChanged,
     (event) => {
       if (event.operation === 'pricing_check') {
         diagnosticEvents.push(event);
@@ -76,6 +81,7 @@ export function mountStudioWorkspace(
   );
   const session = services.session;
   const views = services.views;
+  const reconstruction = services.reconstruction;
   const camera = new CameraService(() => {
     cameraMessage = 'Camera stopped. Enable it again to take a photo.';
     render();
@@ -97,6 +103,13 @@ export function mountStudioWorkspace(
   let resumeRequested = false;
   let preparingGeneration = false;
   let viewSectionOpen = false;
+  let reconstructionOpen = false;
+  let preview: RawModelPreview | null = null;
+  let previewRequestId: string | null = null;
+  let previewLoading = false;
+  let previewError = '';
+  let previewDetail = '';
+  let assetInspection: AssetInspection | null = null;
 
   function onSessionChanged(
     state: import('./CanonicalSession').CanonicalSessionState,
@@ -123,6 +136,10 @@ export function mountStudioWorkspace(
     render();
   }
 
+  function onReconstructionChanged(): void {
+    render();
+  }
+
   const main = el('main', 'studio-workspace');
   main.append(
     el(
@@ -144,7 +161,7 @@ export function mountStudioWorkspace(
   const keyDetail = el(
     'p',
     'studio-small',
-    'Your key is saved in this browser only after a successful connection check. Clear key removes it. Character and view generation send selected images to fal and may incur charges. The photo is kept locally while a request may need refresh recovery. Live camera video stays on your device.',
+    'Your key is saved in this browser only after a successful connection check. Clear key removes it. Character, view and 3D generation send selected images to fal and may incur charges. The photo and original GLB are kept locally for recovery. Live camera video stays on your device.',
   );
   const keyLabel = el('label', 'studio-label', 'fal API key');
   keyLabel.htmlFor = 'studio-key-input';
@@ -348,10 +365,12 @@ export function mountStudioWorkspace(
   const pauseViews = button('Pause checking');
   const backToCharacter = button('Back to character');
   const newCharacter = button('Start a new character');
+  const continueToReconstruction = button('Build 3D head', true);
   viewActions.append(
     generateViews,
     resumeViews,
     pauseViews,
+    continueToReconstruction,
     backToCharacter,
     newCharacter,
   );
@@ -359,6 +378,97 @@ export function mountStudioWorkspace(
   viewSummary.setAttribute('role', 'status');
   viewStage.append(viewTitle, viewHint, viewSheet, viewActions, viewSummary);
   main.append(viewStage);
+
+  const reconstructionStage = el(
+    'section',
+    'studio-stage studio-reconstruction',
+  );
+  reconstructionStage.append(el('h2', undefined, 'Review your 3D head'));
+  const reconstructionHint = el(
+    'p',
+    'studio-small',
+    'Six approved images are sent to fal only when you choose Build 3D head. Orbit the resulting model to inspect the complete skull, ears, jaw, hair and neck from every direction.',
+  );
+  const reconstructionViewer = el('div', 'reconstruction-viewer');
+  const reconstructionPlaceholder = el(
+    'p',
+    'studio-frame-message',
+    'The 3D preview will appear here.',
+  );
+  reconstructionViewer.append(reconstructionPlaceholder);
+  const reconstructionStatus = el('p', 'studio-status');
+  reconstructionStatus.setAttribute('role', 'status');
+  const reconstructionRequestId = el('p', 'studio-small');
+  const reconstructionError = el('p', 'studio-error');
+  reconstructionError.setAttribute('role', 'alert');
+  const reconstructionActions = el('div', 'studio-actions');
+  const build3d = button('Build 3D head', true);
+  const resume3d = button('Resume existing request');
+  const pause3d = button('Pause checking');
+  const cancel3d = button('Cancel reconstruction');
+  const forget3d = button('Forget request');
+  const retryDownload = button('Retry GLB download');
+  const retryPreview = button('Retry 3D preview');
+  const downloadGlb = button('Download original GLB');
+  const downloadMetadata = button('Download metadata');
+  const backToViews = button('Back to views');
+  reconstructionActions.append(
+    build3d,
+    resume3d,
+    pause3d,
+    cancel3d,
+    forget3d,
+    retryDownload,
+    retryPreview,
+    downloadGlb,
+    downloadMetadata,
+    backToViews,
+  );
+  const yawLabel = el(
+    'label',
+    'studio-label',
+    'Front alignment · rotate model around vertical axis',
+  );
+  yawLabel.htmlFor = 'reconstruction-yaw';
+  const yawInput = el('input');
+  yawInput.id = 'reconstruction-yaw';
+  yawInput.type = 'range';
+  yawInput.min = '-180';
+  yawInput.max = '180';
+  yawInput.step = '1';
+  const yawValue = el('output', 'studio-small');
+  const manualLabel = el('label', 'reconstruction-approval');
+  const manualCheck = el('input');
+  manualCheck.type = 'checkbox';
+  manualLabel.append(
+    manualCheck,
+    document.createTextNode(
+      ' I inspected front, both profiles, rear, ears, hair volume, jaw and neck. This is a complete 3D head.',
+    ),
+  );
+  const accept3d = button('Accept 3D head', true);
+  const assetSummary = el('p', 'studio-small');
+  const inspectionOutput = el('pre', 'studio-diagnostics');
+  if (!showDebug) inspectionOutput.hidden = true;
+  const reconstructionDebug = el('pre', 'studio-diagnostics');
+  if (!showDebug) reconstructionDebug.hidden = true;
+  reconstructionStage.append(
+    reconstructionHint,
+    reconstructionViewer,
+    reconstructionStatus,
+    reconstructionRequestId,
+    reconstructionError,
+    reconstructionActions,
+    yawLabel,
+    yawInput,
+    yawValue,
+    manualLabel,
+    accept3d,
+    assetSummary,
+    inspectionOutput,
+    reconstructionDebug,
+  );
+  main.append(reconstructionStage);
 
   let upload: HTMLInputElement | null = null;
   let diagnostics: HTMLPreElement | null = null;
@@ -370,6 +480,10 @@ export function mountStudioWorkspace(
   let canonicalFixtureInput: HTMLInputElement | null = null;
   let canonicalFixtureButton: HTMLButtonElement | null = null;
   let canonicalFixtureStatus: HTMLParagraphElement | null = null;
+  let localGlbInput: HTMLInputElement | null = null;
+  let localGlbHost: HTMLDivElement | null = null;
+  let localGlbReport: HTMLPreElement | null = null;
+  let localGlbPreview: RawModelPreview | null = null;
   if (showDebug) {
     const tools = el('section', 'studio-dev');
     tools.append(el('h2', undefined, 'Generation lab'));
@@ -412,6 +526,22 @@ export function mountStudioWorkspace(
       canonicalFixtureStatus,
     );
     tools.append(fixture);
+    const localModel = el('details', 'studio-recovery');
+    localModel.append(el('summary', undefined, 'Inspect a local GLB fixture'));
+    localModel.append(
+      el(
+        'p',
+        'studio-small',
+        'Open an existing GLB to test parsing, bounds, materials and orbit without fal or a paid request. The file stays in this browser.',
+      ),
+    );
+    localGlbInput = el('input');
+    localGlbInput.type = 'file';
+    localGlbInput.accept = '.glb,model/gltf-binary';
+    localGlbHost = el('div', 'reconstruction-viewer');
+    localGlbReport = el('pre', 'studio-diagnostics');
+    localModel.append(localGlbInput, localGlbHost, localGlbReport);
+    tools.append(localModel);
     const recovery = el('details', 'studio-recovery');
     recovery.append(
       el('summary', undefined, 'Recover an existing fal request'),
@@ -488,8 +618,9 @@ export function mountStudioWorkspace(
     if (disposed) return;
     const state = session.state;
     const viewState = views.state;
-    stage.hidden = viewSectionOpen;
-    viewStage.hidden = !viewSectionOpen;
+    stage.hidden = viewSectionOpen || reconstructionOpen;
+    viewStage.hidden = !viewSectionOpen || reconstructionOpen;
+    reconstructionStage.hidden = !reconstructionOpen;
     const step = state.step;
     const isCamera = step === 'camera';
     const isReview = step === 'photoReview';
@@ -595,6 +726,12 @@ export function mountStudioWorkspace(
           metadata: state.result?.metadata ?? null,
           error: state.error,
           viewSet: viewState,
+          reconstruction: {
+            ...reconstruction.state,
+            blob: reconstruction.state.blob
+              ? `${reconstruction.state.blob.size} bytes`
+              : null,
+          },
         },
         null,
         2,
@@ -617,6 +754,7 @@ export function mountStudioWorkspace(
           !entry.pendingMetadata,
       );
       generateViews.hidden = !missing;
+      continueToReconstruction.hidden = !viewSetReady(viewState);
       generateViews.textContent =
         completed === 0 ? 'Generate five views' : 'Generate remaining views';
       generateViews.disabled =
@@ -630,7 +768,7 @@ export function mountStudioWorkspace(
           ? 'The canonical image could not be displayed. Check its URL or start a new character.'
           : 'Loading the canonical image. View generation is available when it appears.'
         : viewSetReady(viewState)
-          ? 'All six views reviewed. The set is ready for 3D reconstruction in the next milestone.'
+          ? 'All six views reviewed. The set is ready for 3D reconstruction.'
           : `${completed} of 5 additional views generated. Review and accept each image. ${viewState.batchRunning ? 'Checking fal jobs…' : ''}`;
       for (const view of VIEW_IDS) {
         const entry = viewState.views[view];
@@ -696,6 +834,175 @@ export function mountStudioWorkspace(
           );
       }
     }
+    if (reconstructionOpen) {
+      const current = reconstruction.state;
+      const working = ['submitting', 'processing', 'downloading'].includes(
+        current.status,
+      );
+      build3d.hidden = working || !!current.pending || !viewSetReady(viewState);
+      build3d.textContent = current.result
+        ? 'Rebuild 3D head'
+        : 'Build 3D head';
+      build3d.disabled = !credential.ready;
+      resume3d.hidden = !current.pending || working;
+      resume3d.disabled = !credential.ready;
+      pause3d.hidden = !working;
+      cancel3d.hidden = !working || current.status === 'downloading';
+      forget3d.hidden = !current.pending || working;
+      retryDownload.hidden = current.status !== 'asset_error';
+      retryPreview.hidden = !previewError || !current.blob;
+      downloadGlb.hidden = !current.blob;
+      downloadMetadata.hidden = !current.result;
+      yawLabel.hidden = !current.blob;
+      yawInput.hidden = !current.blob;
+      yawInput.value = String(current.yawDegrees);
+      yawValue.hidden = !current.blob;
+      yawValue.textContent = `${current.yawDegrees}°`;
+      manualLabel.hidden = !assetInspection;
+      accept3d.hidden = !assetInspection || current.accepted;
+      assetSummary.hidden = !assetInspection;
+      assetSummary.textContent = assetInspection
+        ? `${assetInspection.meshes} mesh(es), ${assetInspection.triangles.toLocaleString()} triangles, ${assetInspection.materials} material(s), ${assetInspection.texturedMaterials} with color textures. ${assetInspection.warnings.join(' ')}`
+        : '';
+      const flatGeometry =
+        !!assetInspection &&
+        Math.min(...assetInspection.bounds) /
+          Math.max(...assetInspection.bounds) <
+          0.08;
+      accept3d.disabled =
+        !manualCheck.checked || current.status !== 'ready' || flatGeometry;
+      reconstructionPlaceholder.hidden = !!preview && !previewError;
+      reconstructionPlaceholder.textContent = previewLoading
+        ? 'Loading and validating GLB…'
+        : previewError ||
+          (current.status === 'idle'
+            ? 'No 3D model yet.'
+            : 'The 3D preview will appear here.');
+      reconstructionStatus.textContent = current.accepted
+        ? '3D head accepted. Original GLB and metadata are available for later preparation.'
+        : {
+            idle: current.result
+              ? 'Previous result preserved. Build again only if you choose to incur another model request.'
+              : 'Ready to submit six approved views.',
+            submitting: 'Submitting six views to fal…',
+            processing:
+              current.phase === 'queued'
+                ? 'Queued at fal…'
+                : current.phase === 'retrieving'
+                  ? 'Retrieving reconstruction result…'
+                  : 'Building the 3D head at fal…',
+            downloading: 'Downloading and preserving the original GLB…',
+            ready: current.savedLocally
+              ? 'Original GLB saved locally. Orbit to inspect every side.'
+              : 'GLB ready in this tab. Download it to preserve the original.',
+            paused:
+              'Existing reconstruction request paused. Resume to read it without another paid POST.',
+            asset_error:
+              'The provider result is retained. Retry the GLB download without another model request.',
+          }[current.status];
+      reconstructionRequestId.textContent = current.pending
+        ? `fal request ID: ${current.pending.providerRequestId}`
+        : current.result
+          ? `fal request ID: ${current.result.metadata.providerRequestId}`
+          : '';
+      reconstructionError.textContent =
+        current.error ||
+        previewError ||
+        (flatGeometry
+          ? 'The model is too flat to accept as a complete 3D head. Rebuild it after checking the source views.'
+          : '');
+      if (showDebug) {
+        inspectionOutput.textContent = assetInspection
+          ? JSON.stringify(assetInspection, null, 2)
+          : '';
+        reconstructionDebug.textContent = JSON.stringify(
+          {
+            modelId: RECONSTRUCTION_MODEL_ID,
+            pending: current.pending,
+            result: current.result,
+            previewDetail,
+            inputViews: viewState.reference
+              ? {
+                  front: viewState.reference.image.url,
+                  ...Object.fromEntries(
+                    VIEW_IDS.map((view) => [
+                      view,
+                      viewState.views[view].result?.image.url ?? null,
+                    ]),
+                  ),
+                }
+              : null,
+          },
+          null,
+          2,
+        );
+      }
+      syncPreview();
+    } else if (preview) {
+      preview.dispose();
+      preview = null;
+      previewRequestId = null;
+      assetInspection = null;
+    }
+  }
+
+  function syncPreview(): void {
+    const current = reconstruction.state;
+    const id = current.result?.metadata.providerRequestId;
+    if (!current.blob || !id) {
+      preview?.dispose();
+      preview = null;
+      previewRequestId = null;
+      assetInspection = null;
+      return;
+    }
+    if (previewRequestId === id || previewLoading) {
+      preview?.setYaw(current.yawDegrees);
+      return;
+    }
+    preview?.dispose();
+    preview = null;
+    assetInspection = null;
+    previewRequestId = id;
+    previewLoading = true;
+    previewError = '';
+    previewDetail = '';
+    const blob = current.blob;
+    const url = current.result!.asset.url;
+    void import('../reconstruction/RawModelPreview')
+      .then(({ RawModelPreview }) =>
+        RawModelPreview.create(reconstructionViewer, blob, url),
+      )
+      .then(({ preview: loaded, inspection }) => {
+        if (
+          disposed ||
+          !reconstructionOpen ||
+          reconstruction.state.blob !== blob
+        ) {
+          loaded.dispose();
+          previewLoading = false;
+          if (!disposed) render();
+          return;
+        }
+        preview = loaded;
+        assetInspection = inspection;
+        preview.setYaw(reconstruction.state.yawDegrees);
+        previewLoading = false;
+        render();
+      })
+      .catch((failure: unknown) => {
+        if (disposed || reconstruction.state.blob !== blob) {
+          previewLoading = false;
+          if (!disposed) render();
+          return;
+        }
+        previewError =
+          'The GLB could not be opened. Check the file or retry the download.';
+        previewDetail =
+          failure instanceof Error ? failure.message : 'Unknown parser error';
+        previewLoading = false;
+        render();
+      });
   }
 
   async function resumePending(): Promise<void> {
@@ -935,6 +1242,76 @@ export function mountStudioWorkspace(
     views.start(result);
     render();
   });
+  continueToReconstruction.addEventListener('click', () => {
+    if (!viewSetReady(views.state)) return;
+    reconstructionOpen = true;
+    render();
+  });
+  build3d.addEventListener('click', () => {
+    if (!credential.ready || !viewSetReady(views.state)) return;
+    manualCheck.checked = false;
+    void reconstruction.create(views.state);
+  });
+  resume3d.addEventListener('click', () => {
+    if (credential.ready) void reconstruction.resume();
+  });
+  pause3d.addEventListener('click', () => reconstruction.pause());
+  cancel3d.addEventListener('click', () => reconstruction.cancel());
+  forget3d.addEventListener('click', () => reconstruction.forgetPending());
+  retryDownload.addEventListener('click', () => {
+    void reconstruction.retryDownload();
+  });
+  retryPreview.addEventListener('click', () => {
+    previewRequestId = null;
+    previewError = '';
+    render();
+  });
+  backToViews.addEventListener('click', () => {
+    reconstructionOpen = false;
+    viewSectionOpen = true;
+    render();
+  });
+  yawInput.addEventListener('input', () => {
+    manualCheck.checked = false;
+    reconstruction.setYaw(Number(yawInput.value));
+  });
+  manualCheck.addEventListener('change', render);
+  accept3d.addEventListener('click', () => {
+    if (manualCheck.checked && assetInspection) reconstruction.accept();
+  });
+  function downloadFile(blob: Blob, name: string): void {
+    const url = URL.createObjectURL(blob);
+    const link = el('a');
+    link.href = url;
+    link.download = name;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  }
+  downloadGlb.addEventListener('click', () => {
+    const blob = reconstruction.state.blob;
+    if (blob) downloadFile(blob, 'original-reconstruction.glb');
+  });
+  downloadMetadata.addEventListener('click', () => {
+    const result = reconstruction.state.result;
+    if (!result) return;
+    downloadFile(
+      new Blob(
+        [
+          JSON.stringify(
+            {
+              ...result,
+              inspection: assetInspection,
+              frontAlignmentDegrees: reconstruction.state.yawDegrees,
+            },
+            null,
+            2,
+          ),
+        ],
+        { type: 'application/json' },
+      ),
+      'reconstruction-metadata.json',
+    );
+  });
   generateViews.addEventListener('click', () => {
     if (credential.ready) void views.generateMissing();
   });
@@ -947,6 +1324,8 @@ export function mountStudioWorkspace(
     render();
   });
   newCharacter.addEventListener('click', () => {
+    void reconstruction.clear();
+    reconstructionOpen = false;
     views.clear();
     viewSectionOpen = false;
     session.retake();
@@ -1086,7 +1465,43 @@ export function mountStudioWorkspace(
     render();
   });
 
+  localGlbInput?.addEventListener('change', async () => {
+    const file = localGlbInput?.files?.[0];
+    if (!file || !localGlbHost || !localGlbReport) return;
+    localGlbPreview?.dispose();
+    localGlbPreview = null;
+    localGlbReport.textContent = 'Loading local GLB…';
+    if (
+      file.size === 0 ||
+      file.size > MAX_GLB_BYTES ||
+      !file.name.toLowerCase().endsWith('.glb')
+    ) {
+      localGlbReport.textContent = 'Choose a nonempty GLB under 150 MB.';
+      return;
+    }
+    try {
+      const { RawModelPreview } =
+        await import('../reconstruction/RawModelPreview');
+      const loaded = await RawModelPreview.create(
+        localGlbHost,
+        file,
+        'https://example.invalid/fixture.glb',
+      );
+      if (disposed) {
+        loaded.preview.dispose();
+        return;
+      }
+      localGlbPreview = loaded.preview;
+      localGlbReport.textContent = JSON.stringify(loaded.inspection, null, 2);
+    } catch (failure) {
+      localGlbReport.textContent =
+        failure instanceof Error ? failure.message : 'Could not parse the GLB.';
+    }
+    if (localGlbInput) localGlbInput.value = '';
+  });
+
   function clearPage(): void {
+    reconstructionOpen = false;
     abortCheck();
     recoveryController?.abort();
     recoveryController = null;
@@ -1096,6 +1511,13 @@ export function mountStudioWorkspace(
     if (recoveryStatus) recoveryStatus.textContent = '';
     session.cancel('pagehide');
     views.pause();
+    reconstruction.pause();
+    preview?.dispose();
+    localGlbPreview?.dispose();
+    localGlbPreview = null;
+    preview = null;
+    previewRequestId = null;
+    assetInspection = null;
     if (!pendingRecord) {
       session.retake();
       void photoStore.clear();
@@ -1121,6 +1543,8 @@ export function mountStudioWorkspace(
       : '';
     if (views.state.reference && !session.state.result)
       session.restore(views.state.reference);
+    if (reconstruction.state.result || reconstruction.state.pending)
+      reconstructionOpen = true;
     render();
     void resumePending();
     if (credential.ready) void views.resumePending();
@@ -1133,6 +1557,16 @@ export function mountStudioWorkspace(
     views.restore(restoredViewSet);
   } else if (restoredViewSet) viewStore.clear();
   render();
+  void reconstruction.restore().then(() => {
+    if (disposed) return;
+    if (reconstruction.state.result || reconstruction.state.pending) {
+      reconstructionOpen = true;
+      viewSectionOpen = !!views.state.reference;
+    }
+    render();
+    if (credential.ready && reconstruction.state.pending)
+      void reconstruction.resume();
+  });
   void resumePending();
   if (credential.ready) void views.resumePending();
   return () => {
