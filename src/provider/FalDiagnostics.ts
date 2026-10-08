@@ -14,7 +14,10 @@ export type FalDiagnosticStep =
   | 'response_received'
   | 'request_complete'
   | 'request_failed'
-  | 'response_validated';
+  | 'response_validated'
+  | 'queue_state';
+
+export type FalQueueState = 'IN_QUEUE' | 'IN_PROGRESS' | 'COMPLETED';
 
 export type BrowserFailure =
   | 'aborted'
@@ -39,6 +42,8 @@ export interface FalDiagnostic {
   readonly browserFailure?: BrowserFailure;
   readonly online?: boolean;
   readonly secureContext?: boolean;
+  readonly queueState?: FalQueueState;
+  readonly queuePosition?: number;
 }
 
 export type FalDiagnosticSink = (event: FalDiagnostic) => void;

@@ -108,6 +108,50 @@ describe('FalClient', () => {
     expect(fetcher.mock.calls[0]?.[1]?.body).toBe('{"prompt":"fixture"}');
   });
 
+  it('treats HTTP 202 status as a pending job and logs only safe queue state', async () => {
+    const credential = new VolatileCredential();
+    credential.set('sample-secret');
+    const events: FalDiagnostic[] = [];
+    const responses = [
+      json(
+        {
+          status: 'IN_QUEUE',
+          queue_position: 3,
+          logs: [{ message: 'https://private.example/source.png' }],
+        },
+        202,
+      ),
+      json({ status: 'IN_PROGRESS' }, 202),
+      json({ status: 'COMPLETED' }),
+      json({ model_mesh: { url: 'https://fal.media/head.glb' } }),
+    ];
+    const fetcher = vi.fn<typeof fetch>(async () => responses.shift()!);
+    const client = new FalClient(credential, fetcher, 0, (event) =>
+      events.push(event),
+    );
+    const result = await client.resume(
+      { modelId: 'hitem3d/hi3d/multi-view-to-3d', parse: (value) => value },
+      'portrait_1',
+    );
+    expect(result.data).toMatchObject({
+      model_mesh: { url: expect.any(String) },
+    });
+    expect(
+      events.filter((event) => event.step === 'queue_state'),
+    ).toMatchObject([
+      { queueState: 'IN_QUEUE', queuePosition: 3 },
+      { queueState: 'IN_PROGRESS' },
+      { queueState: 'COMPLETED' },
+    ]);
+    expect(JSON.stringify(events)).not.toContain('private.example');
+    expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual([
+      'https://queue.fal.run/hitem3d/hi3d/requests/portrait_1/status',
+      'https://queue.fal.run/hitem3d/hi3d/requests/portrait_1/status',
+      'https://queue.fal.run/hitem3d/hi3d/requests/portrait_1/status',
+      'https://queue.fal.run/hitem3d/hi3d/requests/portrait_1',
+    ]);
+  });
+
   it('polls Nano Banana edit jobs through the app alias, never the /edit endpoint', async () => {
     const { client, fetcher } = setup([
       json({ request_id: 'req_edit' }),
@@ -166,6 +210,96 @@ describe('FalClient', () => {
         'GET',
       ],
     ]);
+  });
+
+  it('recovers a queued 3D result after an HTML gateway timeout without another submit', async () => {
+    const { client, fetcher } = setup([
+      json({ request_id: 'existing_3d' }),
+      json({ status: 'COMPLETED' }),
+      new Response('<html>Gateway Timeout</html>', { status: 504 }),
+      json({ model_glb: { url: 'https://fal.media/head.glb' } }),
+    ]);
+    const result = await client.run({
+      modelId: 'fal-ai/hunyuan-3d/v3.1/pro/image-to-3d',
+      input: { input_image_url: 'https://fal.media/front.png' },
+      parse: (value) => value,
+    });
+    expect(result.requestId).toBe('existing_3d');
+    expect(
+      fetcher.mock.calls.map(([url, init]) => [String(url), init?.method]),
+    ).toEqual([
+      ['https://queue.fal.run/fal-ai/hunyuan-3d/v3.1/pro/image-to-3d', 'POST'],
+      [
+        'https://queue.fal.run/fal-ai/hunyuan-3d/requests/existing_3d/status',
+        'GET',
+      ],
+      ['https://queue.fal.run/fal-ai/hunyuan-3d/requests/existing_3d', 'GET'],
+      ['https://queue.fal.run/fal-ai/hunyuan-3d/requests/existing_3d', 'GET'],
+    ]);
+  });
+
+  it('keeps a timed-out result recoverable after bounded GET retries', async () => {
+    const credential = new VolatileCredential();
+    credential.set('sample-secret');
+    const fetcher = vi.fn<typeof fetch>(
+      async () => new Response('<html>Gateway Timeout</html>', { status: 504 }),
+    );
+    const client = new FalClient(credential, fetcher, 0);
+    await expect(
+      client.resume(
+        { modelId: 'fal-ai/hunyuan-3d/v3.1/pro/image-to-3d', parse: (v) => v },
+        'existing_3d',
+      ),
+    ).rejects.toMatchObject({ code: 'provider_unavailable', status: 504 });
+    expect(fetcher).toHaveBeenCalledTimes(13);
+    expect(fetcher.mock.calls.every(([, init]) => init?.method === 'GET')).toBe(
+      true,
+    );
+  });
+
+  it('stops retrying a terminal downstream failure without exposing submitted images', async () => {
+    const credential = new VolatileCredential();
+    credential.set('sample-secret');
+    const events: FalDiagnostic[] = [];
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(json({ request_id: 'existing_3d' }))
+      .mockResolvedValueOnce(json({ status: 'COMPLETED' }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            detail: [
+              {
+                type: 'downstream_service_unavailable',
+                msg: 'Downstream service unavailable',
+                input: { input_image_url: 'https://private.example/face.png' },
+              },
+            ],
+          }),
+          {
+            status: 504,
+            headers: { 'X-Fal-Needs-Retry': 'false' },
+          },
+        ),
+      );
+    const client = new FalClient(credential, fetcher, 0, (event) =>
+      events.push(event),
+    );
+    const failure = await client
+      .run({
+        modelId: 'fal-ai/hunyuan-3d/v3.1/pro/image-to-3d',
+        input: { input_image_url: 'https://private.example/face.png' },
+        parse: (value) => value,
+      })
+      .catch((error: unknown) => error);
+    expect(failure).toMatchObject({
+      code: 'downstream_unavailable',
+      status: 504,
+      retryable: false,
+    });
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(JSON.stringify(events)).not.toContain('private.example');
+    expect((failure as ProviderError).message).not.toContain('private.example');
   });
 
   it('waits five seconds between status checks by default', async () => {

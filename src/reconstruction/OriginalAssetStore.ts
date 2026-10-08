@@ -64,6 +64,10 @@ export class OriginalAssetStore {
     }
   }
 
+  async remove(requestId: string): Promise<void> {
+    await this.transaction('readwrite', (store) => store.delete(requestId));
+  }
+
   async clear(): Promise<void> {
     try {
       await this.transaction('readwrite', (store) => store.clear());

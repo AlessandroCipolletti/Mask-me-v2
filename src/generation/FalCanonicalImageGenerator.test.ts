@@ -73,7 +73,7 @@ describe('FalCanonicalImageGenerator', () => {
     expect(result.metadata).toMatchObject({
       provider: 'fal',
       modelId: CANONICAL_MODEL_ID,
-      promptVersion: 'canonical-character-v8',
+      promptVersion: 'canonical-character-v10',
       sourcePhotoId: 'capture-1',
       providerRequestId: 'req_42',
       timestamp: '2026-01-01T00:00:00.000Z',

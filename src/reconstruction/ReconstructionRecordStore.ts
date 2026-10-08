@@ -1,4 +1,8 @@
-import { RECONSTRUCTION_MODEL_ID } from './FalReconstructionProvider';
+import {
+  DEFAULT_RECONSTRUCTION_MODEL_ID,
+  isReconstructionModelId,
+  type ReconstructionModelId,
+} from './ReconstructionModels';
 import type {
   ReconstructionMetadata,
   ReconstructionResult,
@@ -12,6 +16,8 @@ export interface ReconstructionRecord {
   readonly result: ReconstructionResult | null;
   readonly accepted: boolean;
   readonly yawDegrees: number;
+  readonly selectedModelId?: ReconstructionModelId;
+  readonly history?: readonly ReconstructionResult[];
 }
 
 function object(value: unknown): Record<string, unknown> | null {
@@ -25,7 +31,7 @@ function validMetadata(value: unknown): value is ReconstructionMetadata {
   if (
     !item ||
     item['provider'] !== 'fal' ||
-    item['modelId'] !== RECONSTRUCTION_MODEL_ID ||
+    !isReconstructionModelId(item['modelId']) ||
     typeof item['providerRequestId'] !== 'string' ||
     !/^[a-zA-Z0-9_-]+$/.test(item['providerRequestId']) ||
     typeof item['submittedAt'] !== 'string'
@@ -34,15 +40,23 @@ function validMetadata(value: unknown): value is ReconstructionMetadata {
   const urls = object(item['inputUrls']);
   const ids = object(item['viewRequestIds']);
   if (!urls || !ids || !object(item['parameters'])) return false;
+  const fields =
+    item['modelId'] === DEFAULT_RECONSTRUCTION_MODEL_ID
+      ? [
+          'input_image_url',
+          'left_front_image_url',
+          'left_image_url',
+          'right_front_image_url',
+          'right_image_url',
+          'back_image_url',
+        ]
+      : ['front', 'left90', 'back180', 'right90'];
+  const idFields =
+    item['modelId'] === DEFAULT_RECONSTRUCTION_MODEL_ID
+      ? ['front', 'frontLeft45', 'left90', 'frontRight45', 'right90', 'back180']
+      : ['front', 'left90', 'back180', 'right90'];
   return (
-    [
-      'input_image_url',
-      'left_front_image_url',
-      'left_image_url',
-      'right_front_image_url',
-      'right_image_url',
-      'back_image_url',
-    ].every((field) => {
+    fields.every((field) => {
       if (typeof urls[field] !== 'string') return false;
       try {
         const url = new URL(urls[field]);
@@ -50,15 +64,7 @@ function validMetadata(value: unknown): value is ReconstructionMetadata {
       } catch {
         return false;
       }
-    }) &&
-    [
-      'front',
-      'frontLeft45',
-      'left90',
-      'frontRight45',
-      'right90',
-      'back180',
-    ].every((field) => typeof ids[field] === 'string')
+    }) && idFields.every((field) => typeof ids[field] === 'string')
   );
 }
 
@@ -103,7 +109,13 @@ export class ReconstructionRecordStore {
         (value['result'] === null || validResult(value['result'])) &&
         typeof value['accepted'] === 'boolean' &&
         typeof value['yawDegrees'] === 'number' &&
-        Number.isFinite(value['yawDegrees'])
+        Number.isFinite(value['yawDegrees']) &&
+        (value['selectedModelId'] === undefined ||
+          isReconstructionModelId(value['selectedModelId'])) &&
+        (value['history'] === undefined ||
+          (Array.isArray(value['history']) &&
+            value['history'].length <= 50 &&
+            value['history'].every(validResult)))
       )
         return value as unknown as ReconstructionRecord;
     } catch {

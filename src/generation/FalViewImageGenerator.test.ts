@@ -44,7 +44,7 @@ describe('FalViewImageGenerator', () => {
       expect(result.metadata).toMatchObject({
         view,
         referenceRequestId: 'canonical_123',
-        promptVersion: 'multiview-v1',
+        promptVersion: 'multiview-v3',
       });
       expect(result.metadata.parameters['system_prompt']).toContain(
         'sole authority',

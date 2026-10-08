@@ -24,7 +24,12 @@ import { ViewSetStore } from './ViewSetStore';
 import { viewSetReady, type ViewSetState } from './ViewSetSession';
 import { VIEW_IDS, VIEW_LABELS, type GeneratedViewId } from './viewPrompts';
 import type { RawModelPreview } from '../reconstruction/RawModelPreview';
-import { RECONSTRUCTION_MODEL_ID } from '../reconstruction/FalReconstructionProvider';
+import {
+  RECONSTRUCTION_MODELS,
+  isHi3dModel,
+  isReconstructionModelId,
+  reconstructionModel,
+} from '../reconstruction/ReconstructionModels';
 import type { AssetInspection } from '../reconstruction/AssetInspection';
 import { MAX_GLB_BYTES } from '../reconstruction/GlbContainer';
 import './studio.css';
@@ -106,6 +111,7 @@ export function mountStudioWorkspace(
   let reconstructionOpen = false;
   let preview: RawModelPreview | null = null;
   let previewRequestId: string | null = null;
+  let mattePreferenceRequestId: string | null = null;
   let previewLoading = false;
   let previewError = '';
   let previewDetail = '';
@@ -360,12 +366,29 @@ export function mountStudioWorkspace(
     forget.addEventListener('click', () => views.forgetPending(view));
   }
   const viewActions = el('div', 'studio-actions');
+  const viewModelPicker = el('div', 'studio-model-picker');
+  const viewModelLabel = el(
+    'label',
+    'studio-label',
+    'Choose a 3D reconstruction model',
+  );
+  const viewModelSelect = el('select', 'studio-input');
+  viewModelSelect.id = 'views-reconstruction-model';
+  viewModelLabel.htmlFor = viewModelSelect.id;
+  for (const model of RECONSTRUCTION_MODELS) {
+    const option = el('option');
+    option.value = model.id;
+    option.textContent = model.label;
+    viewModelSelect.append(option);
+  }
+  const viewModelDetail = el('p', 'studio-small');
+  viewModelPicker.append(viewModelLabel, viewModelSelect, viewModelDetail);
   const generateViews = button('Generate five views', true);
   const resumeViews = button('Resume existing views');
   const pauseViews = button('Pause checking');
   const backToCharacter = button('Back to character');
   const newCharacter = button('Start a new character');
-  const continueToReconstruction = button('Build 3D head', true);
+  const continueToReconstruction = button('Continue to 3D setup', true);
   viewActions.append(
     generateViews,
     resumeViews,
@@ -376,26 +399,76 @@ export function mountStudioWorkspace(
   );
   const viewSummary = el('p', 'studio-status');
   viewSummary.setAttribute('role', 'status');
-  viewStage.append(viewTitle, viewHint, viewSheet, viewActions, viewSummary);
+  viewStage.append(
+    viewTitle,
+    viewHint,
+    viewSheet,
+    viewModelPicker,
+    viewActions,
+    viewSummary,
+  );
   main.append(viewStage);
 
   const reconstructionStage = el(
     'section',
     'studio-stage studio-reconstruction',
   );
-  reconstructionStage.append(el('h2', undefined, 'Review your 3D head'));
+  reconstructionStage.append(
+    el('h2', undefined, 'Build and review your 3D head'),
+  );
   const reconstructionHint = el(
     'p',
     'studio-small',
-    'Six approved images are sent to fal only when you choose Build 3D head. Orbit the resulting model to inspect the complete skull, ears, jaw, hair and neck from every direction.',
+    'Choose a reconstruction model, then build explicitly. Orbit each result to compare the face, skull, ears, hair and neck from every direction.',
   );
+  const modelLabel = el(
+    'label',
+    'studio-label',
+    'Model for the next 3D generation',
+  );
+  const modelSelect = el('select');
+  modelSelect.className = 'studio-input';
+  modelSelect.id = 'reconstruction-model';
+  modelLabel.htmlFor = modelSelect.id;
+  for (const model of RECONSTRUCTION_MODELS) {
+    const option = el('option');
+    option.value = model.id;
+    option.textContent = model.label;
+    modelSelect.append(option);
+  }
+  const modelDetail = el('p', 'studio-small');
+  const modelDocs = el('a', 'studio-small', 'Model API details');
+  modelDocs.target = '_blank';
+  modelDocs.rel = 'noopener noreferrer';
+  const historySection = el('section', 'studio-result-history');
+  const historyHeading = el('p', 'studio-label', 'Saved 3D results');
+  const historyList = el('div', 'studio-result-list');
+  historySection.append(historyHeading, historyList);
   const reconstructionViewer = el('div', 'reconstruction-viewer');
+  const reconstructionCompare = el('div', 'reconstruction-compare');
+  const reconstructionReference = el('figure', 'reconstruction-reference');
+  const reconstructionReferenceImage = el('img');
+  reconstructionReferenceImage.alt = 'Approved canonical front image';
+  reconstructionReference.append(
+    reconstructionReferenceImage,
+    el('figcaption', undefined, 'Approved front image sent to fal'),
+  );
   const reconstructionPlaceholder = el(
     'p',
     'studio-frame-message',
     'The 3D preview will appear here.',
   );
   reconstructionViewer.append(reconstructionPlaceholder);
+  reconstructionCompare.append(reconstructionReference, reconstructionViewer);
+  const matteLabel = el('label', 'reconstruction-finish-toggle');
+  const matteInput = el('input');
+  matteInput.type = 'checkbox';
+  matteLabel.append(
+    matteInput,
+    document.createTextNode(
+      ' Softer matte material preview · original GLB stays unchanged',
+    ),
+  );
   const reconstructionStatus = el('p', 'studio-status');
   reconstructionStatus.setAttribute('role', 'status');
   const reconstructionRequestId = el('p', 'studio-small');
@@ -411,6 +484,7 @@ export function mountStudioWorkspace(
   const retryPreview = button('Retry 3D preview');
   const downloadGlb = button('Download original GLB');
   const downloadMetadata = button('Download metadata');
+  const discard3d = button('Discard 3D mesh');
   const backToViews = button('Back to views');
   reconstructionActions.append(
     build3d,
@@ -422,7 +496,13 @@ export function mountStudioWorkspace(
     retryPreview,
     downloadGlb,
     downloadMetadata,
+    discard3d,
     backToViews,
+  );
+  const discardNote = el(
+    'p',
+    'studio-small',
+    'Discard removes this result from this browser. Files already downloaded remain on your computer.',
   );
   const yawLabel = el(
     'label',
@@ -443,7 +523,7 @@ export function mountStudioWorkspace(
   manualLabel.append(
     manualCheck,
     document.createTextNode(
-      ' I inspected front, both profiles, rear, ears, hair volume, jaw and neck. This is a complete 3D head.',
+      ' I compared the 3D face and head proportions with the approved image, then inspected both profiles, rear, ears, hair volume, jaw and neck. This is a recognizable, complete 3D head.',
     ),
   );
   const accept3d = button('Accept 3D head', true);
@@ -454,11 +534,18 @@ export function mountStudioWorkspace(
   if (!showDebug) reconstructionDebug.hidden = true;
   reconstructionStage.append(
     reconstructionHint,
-    reconstructionViewer,
+    modelLabel,
+    modelSelect,
+    modelDetail,
+    modelDocs,
+    reconstructionCompare,
+    matteLabel,
     reconstructionStatus,
     reconstructionRequestId,
     reconstructionError,
     reconstructionActions,
+    discardNote,
+    historySection,
     yawLabel,
     yawInput,
     yawValue,
@@ -484,6 +571,8 @@ export function mountStudioWorkspace(
   let localGlbHost: HTMLDivElement | null = null;
   let localGlbReport: HTMLPreElement | null = null;
   let localGlbPreview: RawModelPreview | null = null;
+  let faceProbeButton: HTMLButtonElement | null = null;
+  let clearFitOverlayButton: HTMLButtonElement | null = null;
   if (showDebug) {
     const tools = el('section', 'studio-dev');
     tools.append(el('h2', undefined, 'Generation lab'));
@@ -540,7 +629,17 @@ export function mountStudioWorkspace(
     localGlbInput.accept = '.glb,model/gltf-binary';
     localGlbHost = el('div', 'reconstruction-viewer');
     localGlbReport = el('pre', 'studio-diagnostics');
-    localModel.append(localGlbInput, localGlbHost, localGlbReport);
+    faceProbeButton = button('Probe face orientation locally');
+    faceProbeButton.disabled = true;
+    clearFitOverlayButton = button('Hide fit overlay');
+    clearFitOverlayButton.disabled = true;
+    localModel.append(
+      localGlbInput,
+      localGlbHost,
+      faceProbeButton,
+      clearFitOverlayButton,
+      localGlbReport,
+    );
     tools.append(localModel);
     const recovery = el('details', 'studio-recovery');
     recovery.append(
@@ -755,6 +854,15 @@ export function mountStudioWorkspace(
       );
       generateViews.hidden = !missing;
       continueToReconstruction.hidden = !viewSetReady(viewState);
+      viewModelPicker.hidden = !viewSetReady(viewState);
+      viewModelSelect.value = reconstruction.state.selectedModelId;
+      viewModelSelect.disabled =
+        viewState.batchRunning ||
+        !!reconstruction.state.pending ||
+        ['submitting', 'processing', 'downloading'].includes(
+          reconstruction.state.status,
+        );
+      viewModelDetail.textContent = `Uses ${reconstructionModel(reconstruction.state.selectedModelId).views.toLowerCase()}. ${reconstruction.state.selectedModelId.endsWith('/fast') ? 'The fast tier may shorten generation; its likeness has not been tested yet. ' : ''}The paid request starts on the next screen.`;
       generateViews.textContent =
         completed === 0 ? 'Generate five views' : 'Generate remaining views';
       generateViews.disabled =
@@ -836,9 +944,52 @@ export function mountStudioWorkspace(
     }
     if (reconstructionOpen) {
       const current = reconstruction.state;
-      const working = ['submitting', 'processing', 'downloading'].includes(
-        current.status,
-      );
+      const submittedAt = current.pending
+        ? Date.parse(current.pending.submittedAt)
+        : NaN;
+      const elapsedMinutes = Number.isFinite(submittedAt)
+        ? Math.max(0, Math.floor((Date.now() - submittedAt) / 60_000))
+        : null;
+      const waitDuration =
+        elapsedMinutes === null ? '' : ` for ${elapsedMinutes} min`;
+      const longWaitNote =
+        elapsedMinutes !== null && elapsedMinutes >= 10
+          ? ' Fal has not marked this request complete. The app will keep checking its existing ID; pausing and resuming will not submit another paid request.'
+          : '';
+      const referenceUrl = viewState.reference?.image.url;
+      reconstructionReference.hidden = !referenceUrl;
+      reconstructionCompare.classList.toggle('single', !referenceUrl);
+      if (referenceUrl && reconstructionReferenceImage.src !== referenceUrl)
+        reconstructionReferenceImage.src = referenceUrl;
+      const working = [
+        'submitting',
+        'processing',
+        'downloading',
+        'discarding',
+      ].includes(current.status);
+      const discarding = current.status === 'discarding';
+      syncPreview();
+      modelSelect.value = current.selectedModelId;
+      modelSelect.disabled = working || !!current.pending;
+      const model = reconstructionModel(current.selectedModelId);
+      modelDetail.textContent = `Inputs: ${model.views}. ${current.selectedModelId.endsWith('/fast') ? 'The fast tier may shorten generation, with an unverified quality tradeoff. ' : ''}Each build is a separate paid fal request. Review geometry against the original images; visual similarity and a closed crown need manual inspection.`;
+      modelDocs.href = model.documentation;
+      historySection.hidden = current.history.length === 0;
+      historyList.replaceChildren();
+      for (const item of current.history) {
+        const entry = button('');
+        entry.dataset['requestId'] = item.metadata.providerRequestId;
+        const name =
+          RECONSTRUCTION_MODELS.find(
+            (model) => model.id === item.metadata.modelId,
+          )?.label ?? item.metadata.modelId;
+        const selected =
+          current.result?.metadata.providerRequestId ===
+          item.metadata.providerRequestId;
+        entry.textContent = `${selected ? 'Viewing' : 'Open'} ${name} · ${item.metadata.providerRequestId.slice(0, 8)}`;
+        entry.disabled = working || !!current.pending || selected;
+        historyList.append(entry);
+      }
       build3d.hidden = working || !!current.pending || !viewSetReady(viewState);
       build3d.textContent = current.result
         ? 'Rebuild 3D head'
@@ -846,20 +997,25 @@ export function mountStudioWorkspace(
       build3d.disabled = !credential.ready;
       resume3d.hidden = !current.pending || working;
       resume3d.disabled = !credential.ready;
-      pause3d.hidden = !working;
-      cancel3d.hidden = !working || current.status === 'downloading';
+      pause3d.hidden = !working || current.status === 'discarding';
+      cancel3d.hidden =
+        !working ||
+        current.status === 'downloading' ||
+        current.status === 'discarding';
       forget3d.hidden = !current.pending || working;
       retryDownload.hidden = current.status !== 'asset_error';
-      retryPreview.hidden = !previewError || !current.blob;
-      downloadGlb.hidden = !current.blob;
-      downloadMetadata.hidden = !current.result;
-      yawLabel.hidden = !current.blob;
-      yawInput.hidden = !current.blob;
+      retryPreview.hidden = discarding || !previewError || !current.blob;
+      downloadGlb.hidden = discarding || !current.blob;
+      downloadMetadata.hidden = discarding || !current.result;
+      discard3d.hidden = !current.result || !!current.pending || working;
+      discardNote.hidden = discard3d.hidden;
+      yawLabel.hidden = discarding || !current.blob;
+      yawInput.hidden = discarding || !current.blob;
       yawInput.value = String(current.yawDegrees);
-      yawValue.hidden = !current.blob;
+      yawValue.hidden = discarding || !current.blob;
       yawValue.textContent = `${current.yawDegrees}°`;
-      manualLabel.hidden = !assetInspection;
-      accept3d.hidden = !assetInspection || current.accepted;
+      manualLabel.hidden = discarding || !assetInspection;
+      accept3d.hidden = discarding || !assetInspection || current.accepted;
       assetSummary.hidden = !assetInspection;
       assetSummary.textContent = assetInspection
         ? `${assetInspection.meshes} mesh(es), ${assetInspection.triangles.toLocaleString()} triangles, ${assetInspection.materials} material(s), ${assetInspection.texturedMaterials} with color textures. ${assetInspection.warnings.join(' ')}`
@@ -872,6 +1028,7 @@ export function mountStudioWorkspace(
       accept3d.disabled =
         !manualCheck.checked || current.status !== 'ready' || flatGeometry;
       reconstructionPlaceholder.hidden = !!preview && !previewError;
+      matteLabel.hidden = !preview || !!previewError;
       reconstructionPlaceholder.textContent = previewLoading
         ? 'Loading and validating GLB…'
         : previewError ||
@@ -883,15 +1040,16 @@ export function mountStudioWorkspace(
         : {
             idle: current.result
               ? 'Previous result preserved. Build again only if you choose to incur another model request.'
-              : 'Ready to submit six approved views.',
-            submitting: 'Submitting six views to fal…',
+              : 'Ready to submit the selected approved views.',
+            submitting: 'Submitting selected views to fal…',
             processing:
               current.phase === 'queued'
-                ? 'Queued at fal…'
+                ? `Queued at fal${waitDuration}.${longWaitNote}`
                 : current.phase === 'retrieving'
                   ? 'Retrieving reconstruction result…'
-                  : 'Building the 3D head at fal…',
+                  : `Building the 3D head at fal${waitDuration}.${longWaitNote}`,
             downloading: 'Downloading and preserving the original GLB…',
+            discarding: 'Removing this 3D result from browser storage…',
             ready: current.savedLocally
               ? 'Original GLB saved locally. Orbit to inspect every side.'
               : 'GLB ready in this tab. Download it to preserve the original.',
@@ -901,9 +1059,9 @@ export function mountStudioWorkspace(
               'The provider result is retained. Retry the GLB download without another model request.',
           }[current.status];
       reconstructionRequestId.textContent = current.pending
-        ? `fal request ID: ${current.pending.providerRequestId}`
+        ? `${RECONSTRUCTION_MODELS.find((entry) => entry.id === current.pending?.modelId)?.label ?? current.pending.modelId} · fal request ID: ${current.pending.providerRequestId}`
         : current.result
-          ? `fal request ID: ${current.result.metadata.providerRequestId}`
+          ? `${RECONSTRUCTION_MODELS.find((entry) => entry.id === current.result?.metadata.modelId)?.label ?? current.result.metadata.modelId} · fal request ID: ${current.result.metadata.providerRequestId}`
           : '';
       reconstructionError.textContent =
         current.error ||
@@ -917,7 +1075,8 @@ export function mountStudioWorkspace(
           : '';
         reconstructionDebug.textContent = JSON.stringify(
           {
-            modelId: RECONSTRUCTION_MODEL_ID,
+            selectedModelId: current.selectedModelId,
+            history: current.history.map((item) => item.metadata),
             pending: current.pending,
             result: current.result,
             previewDetail,
@@ -937,7 +1096,6 @@ export function mountStudioWorkspace(
           2,
         );
       }
-      syncPreview();
     } else if (preview) {
       preview.dispose();
       preview = null;
@@ -953,12 +1111,22 @@ export function mountStudioWorkspace(
       preview?.dispose();
       preview = null;
       previewRequestId = null;
+      previewLoading = false;
+      previewError = '';
+      previewDetail = '';
       assetInspection = null;
       return;
     }
     if (previewRequestId === id || previewLoading) {
       preview?.setYaw(current.yawDegrees);
       return;
+    }
+    if (mattePreferenceRequestId !== id) {
+      const modelId = current.result!.metadata.modelId;
+      matteInput.checked = isReconstructionModelId(modelId)
+        ? isHi3dModel(modelId)
+        : false;
+      mattePreferenceRequestId = id;
     }
     preview?.dispose();
     preview = null;
@@ -977,23 +1145,33 @@ export function mountStudioWorkspace(
         if (
           disposed ||
           !reconstructionOpen ||
-          reconstruction.state.blob !== blob
+          reconstruction.state.blob !== blob ||
+          previewRequestId !== id
         ) {
           loaded.dispose();
-          previewLoading = false;
-          if (!disposed) render();
+          if (previewRequestId === id) {
+            previewLoading = false;
+            if (!disposed) render();
+          }
           return;
         }
         preview = loaded;
         assetInspection = inspection;
         preview.setYaw(reconstruction.state.yawDegrees);
+        preview.setMattePreview(matteInput.checked);
         previewLoading = false;
         render();
       })
       .catch((failure: unknown) => {
-        if (disposed || reconstruction.state.blob !== blob) {
-          previewLoading = false;
-          if (!disposed) render();
+        if (
+          disposed ||
+          reconstruction.state.blob !== blob ||
+          previewRequestId !== id
+        ) {
+          if (previewRequestId === id) {
+            previewLoading = false;
+            if (!disposed) render();
+          }
           return;
         }
         previewError =
@@ -1247,10 +1425,27 @@ export function mountStudioWorkspace(
     reconstructionOpen = true;
     render();
   });
+  viewModelSelect.addEventListener('change', () => {
+    if (isReconstructionModelId(viewModelSelect.value))
+      reconstruction.selectModel(viewModelSelect.value);
+  });
   build3d.addEventListener('click', () => {
     if (!credential.ready || !viewSetReady(views.state)) return;
     manualCheck.checked = false;
     void reconstruction.create(views.state);
+  });
+  modelSelect.addEventListener('change', () => {
+    if (isReconstructionModelId(modelSelect.value))
+      reconstruction.selectModel(modelSelect.value);
+  });
+  historyList.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const entry = target.closest('button[data-request-id]');
+    if (!(entry instanceof HTMLButtonElement) || !historyList.contains(entry))
+      return;
+    manualCheck.checked = false;
+    void reconstruction.showHistory(entry.dataset['requestId'] ?? '');
   });
   resume3d.addEventListener('click', () => {
     if (credential.ready) void reconstruction.resume();
@@ -1258,6 +1453,10 @@ export function mountStudioWorkspace(
   pause3d.addEventListener('click', () => reconstruction.pause());
   cancel3d.addEventListener('click', () => reconstruction.cancel());
   forget3d.addEventListener('click', () => reconstruction.forgetPending());
+  discard3d.addEventListener('click', () => {
+    manualCheck.checked = false;
+    void reconstruction.discardCurrent();
+  });
   retryDownload.addEventListener('click', () => {
     void reconstruction.retryDownload();
   });
@@ -1275,6 +1474,9 @@ export function mountStudioWorkspace(
     manualCheck.checked = false;
     reconstruction.setYaw(Number(yawInput.value));
   });
+  matteInput.addEventListener('change', () => {
+    preview?.setMattePreview(matteInput.checked);
+  });
   manualCheck.addEventListener('change', render);
   accept3d.addEventListener('click', () => {
     if (manualCheck.checked && assetInspection) reconstruction.accept();
@@ -1289,7 +1491,14 @@ export function mountStudioWorkspace(
   }
   downloadGlb.addEventListener('click', () => {
     const blob = reconstruction.state.blob;
-    if (blob) downloadFile(blob, 'original-reconstruction.glb');
+    const result = reconstruction.state.result;
+    if (blob && result) {
+      const model = result.metadata.modelId.replace(/[^a-z0-9]+/gi, '-');
+      downloadFile(
+        blob,
+        `reconstruction-${model}-${result.metadata.providerRequestId}.glb`,
+      );
+    }
   });
   downloadMetadata.addEventListener('click', () => {
     const result = reconstruction.state.result;
@@ -1309,7 +1518,7 @@ export function mountStudioWorkspace(
         ],
         { type: 'application/json' },
       ),
-      'reconstruction-metadata.json',
+      `reconstruction-metadata-${result.metadata.providerRequestId}.json`,
     );
   });
   generateViews.addEventListener('click', () => {
@@ -1470,6 +1679,8 @@ export function mountStudioWorkspace(
     if (!file || !localGlbHost || !localGlbReport) return;
     localGlbPreview?.dispose();
     localGlbPreview = null;
+    if (faceProbeButton) faceProbeButton.disabled = true;
+    if (clearFitOverlayButton) clearFitOverlayButton.disabled = true;
     localGlbReport.textContent = 'Loading local GLB…';
     if (
       file.size === 0 ||
@@ -1492,6 +1703,7 @@ export function mountStudioWorkspace(
         return;
       }
       localGlbPreview = loaded.preview;
+      if (faceProbeButton) faceProbeButton.disabled = false;
       localGlbReport.textContent = JSON.stringify(loaded.inspection, null, 2);
     } catch (failure) {
       localGlbReport.textContent =
@@ -1499,6 +1711,78 @@ export function mountStudioWorkspace(
     }
     if (localGlbInput) localGlbInput.value = '';
   });
+
+  if (import.meta.env.MODE !== 'production')
+    faceProbeButton?.addEventListener('click', async () => {
+      if (!localGlbPreview || !localGlbReport || !faceProbeButton) return;
+      const currentPreview = localGlbPreview;
+      faceProbeButton.disabled = true;
+      localGlbReport.textContent =
+        'Checking facial landmarks around the local head…';
+      try {
+        const { probeRenderedOrientations } =
+          await import('../preparation/FaceCorrespondenceProbe');
+        const result = await probeRenderedOrientations(currentPreview);
+        let templateFit: unknown = null;
+        if (result.surfacePoints) {
+          const [
+            { loadFaceKitTemplate },
+            { fitSelectedFaceFeatures, collectSelectedFaceFeaturePairs },
+            { fitLandmarkWarp },
+            { createFaceFitOverlay },
+          ] = await Promise.all([
+            import('../preparation/FaceKitTemplate'),
+            import('../preparation/FeatureFit'),
+            import('../preparation/LandmarkWarp'),
+            import('../preparation/FaceFitOverlay'),
+          ]);
+          const template = await loadFaceKitTemplate();
+          const fit = fitSelectedFaceFeatures(template, result.surfacePoints);
+          const warp = fitLandmarkWarp(
+            collectSelectedFaceFeaturePairs(template, result.surfacePoints),
+            fit,
+            1,
+          );
+          templateFit = {
+            rigid: fit,
+            localEightPointWarp: {
+              supportRadius: warp.supportRadius,
+              residualRms: warp.residualRms,
+            },
+          };
+          if (!disposed && localGlbPreview === currentPreview) {
+            currentPreview.setDiagnosticOverlay(
+              createFaceFitOverlay(template, fit, warp),
+            );
+            if (clearFitOverlayButton) clearFitOverlayButton.disabled = false;
+          }
+        }
+        if (!disposed && localGlbPreview === currentPreview)
+          localGlbReport.textContent = JSON.stringify(
+            {
+              best: result.best,
+              candidates: result.candidates.map((candidate) => ({
+                sourceYawDegrees: candidate.sourceYawDegrees,
+                detectedFaces: candidate.detectedFaces,
+                landmarkCount: candidate.landmarkCount,
+                detectedYawRadians: candidate.detectedYawRadians,
+                score: candidate.score,
+              })),
+              surfacePoints: result.surfacePoints,
+              templateFit,
+            },
+            null,
+            2,
+          );
+      } catch (failure) {
+        if (!disposed && localGlbPreview === currentPreview)
+          localGlbReport.textContent =
+            failure instanceof Error ? failure.message : 'Face probe failed.';
+      } finally {
+        if (!disposed && localGlbPreview === currentPreview)
+          faceProbeButton.disabled = false;
+      }
+    });
 
   function clearPage(): void {
     reconstructionOpen = false;
@@ -1566,6 +1850,11 @@ export function mountStudioWorkspace(
     render();
     if (credential.ready && reconstruction.state.pending)
       void reconstruction.resume();
+  });
+
+  clearFitOverlayButton?.addEventListener('click', () => {
+    localGlbPreview?.setDiagnosticOverlay(null);
+    if (clearFitOverlayButton) clearFitOverlayButton.disabled = true;
   });
   void resumePending();
   if (credential.ready) void views.resumePending();

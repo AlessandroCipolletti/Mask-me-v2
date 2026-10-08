@@ -8,7 +8,9 @@ import {
   Mesh,
   Object3D,
   PerspectiveCamera,
+  Raycaster,
   Scene,
+  Vector2,
   Vector3,
   WebGLRenderer,
   type BufferGeometry,
@@ -22,6 +24,7 @@ import {
   validateGlbContainer,
   type AssetInspection,
 } from './AssetInspection';
+import { PreviewMaterialFinish } from './PreviewMaterialFinish';
 
 function disposeModel(root: Object3D): void {
   const materials = new Set<Material>();
@@ -58,6 +61,8 @@ export class RawModelPreview {
   private readonly orientation = new Group();
   private readonly observer: ResizeObserver | null;
   private model: Object3D | null = null;
+  private diagnosticOverlay: Object3D | null = null;
+  private materialFinish: PreviewMaterialFinish | null = null;
   private disposed = false;
   private running = false;
   private contextLost = false;
@@ -136,6 +141,7 @@ export class RawModelPreview {
       });
       preview = new RawModelPreview(host);
       preview.model = gltf.scene;
+      preview.materialFinish = new PreviewMaterialFinish(gltf.scene);
       preview.orientation.add(normalized);
       preview.start();
       return { preview, inspection };
@@ -148,6 +154,58 @@ export class RawModelPreview {
 
   setYaw(degrees: number): void {
     this.orientation.rotation.y = (degrees * Math.PI) / 180;
+  }
+
+  setMattePreview(enabled: boolean): void {
+    this.materialFinish?.setMatte(enabled);
+  }
+
+  getYaw(): number {
+    return (this.orientation.rotation.y * 180) / Math.PI;
+  }
+
+  /** Render once and inspect pixels synchronously before WebGL clears its buffer. */
+  inspectFrame<T>(inspect: (canvas: HTMLCanvasElement) => T): T {
+    if (this.disposed || this.contextLost)
+      throw new Error('The 3D preview is unavailable for frame inspection.');
+    this.renderer.render(this.scene, this.camera);
+    return inspect(this.canvas);
+  }
+
+  /** Lift a normalized image point to the visible source surface in preview space. */
+  sampleSurface(
+    x: number,
+    y: number,
+  ): readonly [number, number, number] | null {
+    if (
+      this.disposed ||
+      !Number.isFinite(x) ||
+      !Number.isFinite(y) ||
+      x < 0 ||
+      x > 1 ||
+      y < 0 ||
+      y > 1
+    )
+      return null;
+    this.scene.updateMatrixWorld(true);
+    this.camera.updateMatrixWorld(true);
+    const raycaster = new Raycaster();
+    raycaster.setFromCamera(new Vector2(2 * x - 1, 1 - 2 * y), this.camera);
+    const hit = this.model
+      ? raycaster.intersectObject(this.model, true)[0]
+      : undefined;
+    return hit ? [hit.point.x, hit.point.y, hit.point.z] : null;
+  }
+
+  /** Development overlay in normalized avatar coordinates; ownership transfers here. */
+  setDiagnosticOverlay(overlay: Object3D | null): void {
+    if (this.disposed) throw new Error('The 3D preview has been disposed.');
+    if (this.diagnosticOverlay) {
+      this.diagnosticOverlay.removeFromParent();
+      disposeModel(this.diagnosticOverlay);
+    }
+    this.diagnosticOverlay = overlay;
+    if (overlay) this.orientation.add(overlay);
   }
 
   private readonly resize = (): void => {
@@ -210,6 +268,7 @@ export class RawModelPreview {
       this.onContextRestored,
     );
     this.orbit.dispose();
+    if (this.diagnosticOverlay) disposeModel(this.diagnosticOverlay);
     if (this.model) disposeModel(this.model);
     this.renderer.dispose();
     this.renderer.forceContextLoss();

@@ -1,5 +1,6 @@
 import type { ProviderPhase } from '../provider/ProviderClient';
 import type { ViewSetState } from '../generation/ViewSetSession';
+import type { ReconstructionModelId } from './ReconstructionModels';
 
 export interface ReconstructionAsset {
   readonly url: string;
@@ -26,13 +27,18 @@ export interface ReconstructionResult {
 }
 
 export interface ReconstructionProvider {
-  metadataFor(views: ViewSetState, requestId: string): ReconstructionMetadata;
+  metadataFor(
+    views: ViewSetState,
+    requestId: string,
+    modelId?: ReconstructionModelId,
+  ): ReconstructionMetadata;
   createReconstruction(
     views: ViewSetState,
     options: {
       signal: AbortSignal;
       onPhase: (phase: ProviderPhase) => void;
       onSubmitted: (requestId: string) => void;
+      modelId?: ReconstructionModelId;
     },
   ): Promise<ReconstructionResult>;
   getStatus(

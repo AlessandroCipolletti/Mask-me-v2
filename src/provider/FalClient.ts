@@ -71,6 +71,16 @@ function providerCode(value: unknown): string | undefined {
   const detail = body['detail'];
   const error = body['error'];
   if (typeof body['code'] === 'string') return body['code'];
+  if (Array.isArray(detail)) {
+    const first = detail[0];
+    if (
+      typeof first === 'object' &&
+      first !== null &&
+      'type' in first &&
+      typeof first.type === 'string'
+    )
+      return first.type;
+  }
   if (
     typeof detail === 'object' &&
     detail !== null &&
@@ -251,10 +261,28 @@ export class FalClient implements ProviderClient {
       const status = record(
         await this.readWithRetry(`${base}/status`, signal, 'queue_status'),
       );
+      const queueState = status['status'];
+      if (
+        queueState !== 'IN_QUEUE' &&
+        queueState !== 'IN_PROGRESS' &&
+        queueState !== 'COMPLETED'
+      )
+        throw new ProviderError('invalid_response');
+      const queuePosition = status['queue_position'];
+      this.emit({
+        operation: 'queue_status',
+        step: 'queue_state',
+        queueState,
+        ...(queueState === 'IN_QUEUE' &&
+        typeof queuePosition === 'number' &&
+        Number.isSafeInteger(queuePosition) &&
+        queuePosition >= 0
+          ? { queuePosition }
+          : {}),
+      });
       if (status['status'] === 'COMPLETED') break;
       if (status['status'] === 'IN_QUEUE') options.onPhase?.('queued');
       else if (status['status'] === 'IN_PROGRESS') options.onPhase?.('running');
-      else throw new ProviderError('invalid_response');
       await wait(this.pollMs, signal);
     }
     options.onPhase?.('retrieving');
@@ -277,14 +305,21 @@ export class FalClient implements ProviderClient {
         return await this.request(url, { method: 'GET', signal }, operation);
       } catch (error) {
         const failure = normalizeProviderFailure(error, signal);
+        // A completed queue job can temporarily return a gateway timeout while
+        // fal makes its result available. Re-read the same job; never resubmit it.
+        const gatewayTimeout = failure.status === 504;
         if (
-          attempt >= 2 ||
-          !['rate_limit', 'provider_unavailable', 'network_or_cors'].includes(
-            failure.code,
-          )
+          attempt >= (gatewayTimeout ? 12 : 2) ||
+          failure.retryable === false ||
+          ![
+            'rate_limit',
+            'provider_unavailable',
+            'downstream_unavailable',
+            'network_or_cors',
+          ].includes(failure.code)
         )
           throw failure;
-        await wait(500 * (attempt + 1), signal);
+        await wait(gatewayTimeout ? this.pollMs : 500 * (attempt + 1), signal);
       }
     }
   }
@@ -365,11 +400,21 @@ export class FalClient implements ProviderClient {
         try {
           body = JSON.parse(raw) as unknown;
         } catch {
-          throw new ProviderError('invalid_response');
+          // Gateway and proxy errors often have an HTML body. The HTTP status
+          // still determines the error and whether this read can be retried.
+          if (response.ok) throw new ProviderError('invalid_response');
         }
       }
-      if (!response.ok)
-        throw errorFromStatus(response.status, providerCode(body));
+      if (!response.ok) {
+        const retryHeader = response.headers.get('X-Fal-Needs-Retry');
+        const retryable =
+          retryHeader === 'true'
+            ? true
+            : retryHeader === 'false'
+              ? false
+              : undefined;
+        throw errorFromStatus(response.status, providerCode(body), retryable);
+      }
       this.emit({
         operation,
         step: 'request_complete',

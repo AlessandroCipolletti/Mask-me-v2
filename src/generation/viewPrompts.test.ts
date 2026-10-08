@@ -8,7 +8,7 @@ import {
 
 describe('M5 view prompts', () => {
   it('defines five distinct angles from one canonical reference', () => {
-    expect(VIEW_PROMPT_VERSION).toBe('multiview-v1');
+    expect(VIEW_PROMPT_VERSION).toBe('multiview-v3');
     expect(VIEW_IDS).toEqual([
       'frontLeft45',
       'left90',
@@ -24,6 +24,10 @@ describe('M5 view prompts', () => {
       );
       expect(prompt).toContain('entire hair, skull, ears');
       expect(prompt).toContain('same soft studio light');
+      expect(prompt).toContain('high-detail dimensional skin and hair');
+      expect(prompt).toContain('completely free of visible wrinkles');
+      expect(prompt).toContain('under-eye dark circles');
+      expect(prompt).toContain('Preserve the exact eye shape');
     }
     expect(prompts[0]).toContain('character’s own left side');
     expect(prompts[1]).toContain('true left profile');
@@ -34,5 +38,10 @@ describe('M5 view prompts', () => {
     expect(buildViewSystemPrompt()).toContain(
       'Only the virtual camera angle changes',
     );
+    expect(buildViewSystemPrompt()).toContain(
+      'Keep the skin smooth and wrinkle-free in every view',
+    );
+    expect(buildViewSystemPrompt()).toContain('fine non-aging material detail');
+    expect(buildViewSystemPrompt()).toContain('free of dark circles');
   });
 });

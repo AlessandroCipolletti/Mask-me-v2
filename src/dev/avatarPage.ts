@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { type AvatarControlState } from '../avatar/AvatarControlState';
 import { AvatarRenderer, type RenderStats } from '../avatar/AvatarRenderer';
 import { KnownGoodAvatar } from '../avatar/KnownGoodAvatar';
+import { PreparedAvatarRig } from '../avatar/PreparedAvatarRig';
 import {
   referencePoses,
   SyntheticControlSource,
@@ -362,7 +363,7 @@ function button(label: string): HTMLButtonElement {
 
 export function mountAvatarLab(host: HTMLElement): void {
   const source = new SyntheticControlSource();
-  const rig = new KnownGoodAvatar();
+  let rig: KnownGoodAvatar | PreparedAvatarRig = new KnownGoodAvatar();
   const main = document.createElement('main');
   main.className = 'avatar-lab';
   const heading = text('h1', 'Avatar lab');
@@ -399,6 +400,21 @@ export function mountAvatarLab(host: HTMLElement): void {
   toolbar.className = 'avatar-toolbar';
   toolbar.append(poseSelect, sequenceButton, sweepButton, stopButton);
   controlsPane.append(toolbar);
+
+  const preparedPicker = document.createElement('div');
+  preparedPicker.className = 'avatar-toolbar';
+  const glbInput = document.createElement('input');
+  glbInput.type = 'file';
+  glbInput.accept = '.glb,model/gltf-binary';
+  glbInput.setAttribute('aria-label', 'Prepared avatar GLB');
+  const manifestInput = document.createElement('input');
+  manifestInput.type = 'file';
+  manifestInput.accept = '.json,application/json';
+  manifestInput.setAttribute('aria-label', 'Prepared avatar manifest JSON');
+  const loadButton = button('Load prepared avatar');
+  const fixtureButton = button('Load known-good fixture');
+  preparedPicker.append(glbInput, manifestInput, loadButton, fixtureButton);
+  controlsPane.prepend(preparedPicker);
 
   const sliderValues: Array<{
     spec: SliderSpec;
@@ -454,7 +470,7 @@ export function mountAvatarLab(host: HTMLElement): void {
     manifest,
     text(
       'p',
-      'Morph targets: none. This fixture maps semantic controls to named mesh transforms. Future prepared rigs implement the same adapter.',
+      'The fixture uses mesh transforms. A prepared GLB uses manifest-bound facial morphs and pivots. Loading files stays local and makes no provider request.',
     ),
   );
 
@@ -478,33 +494,73 @@ export function mountAvatarLab(host: HTMLElement): void {
       performance.textContent = `Render ${stats.fps.toFixed(1)} FPS · CPU frame p50 ${stats.frameP50Ms.toFixed(1)} ms / p95 ${stats.frameP95Ms.toFixed(1)} ms · ${stats.drawCalls} calls · ${stats.triangles} triangles · ${stats.geometries} geometries · ${stats.textures} textures · DPR ${stats.dpr.toFixed(1)}`;
   }
 
-  let renderer: AvatarRenderer;
-  try {
-    renderer = new AvatarRenderer(
-      viewport,
-      rig,
-      source.state,
-      (nowMs) => source.update(nowMs),
-      updateReadout,
-      (message) => {
-        status.textContent = message;
-      },
+  let renderer: AvatarRenderer | null = null;
+  let orbit: OrbitControls | null = null;
+  function startRig(nextRig: KnownGoodAvatar | PreparedAvatarRig): void {
+    orbit?.dispose();
+    orbit = null;
+    renderer?.dispose();
+    renderer = null;
+    rig = nextRig;
+    manifest.textContent = JSON.stringify(
+      rig instanceof PreparedAvatarRig ? rig.preparation : rig.manifest,
+      null,
+      2,
     );
-  } catch (error) {
-    rig.dispose();
-    status.textContent =
-      error instanceof Error ? error.message : 'Renderer could not start.';
+    try {
+      renderer = new AvatarRenderer(
+        viewport,
+        rig,
+        source.state,
+        (nowMs) => source.update(nowMs),
+        updateReadout,
+        (message) => {
+          status.textContent = message;
+        },
+      );
+      const capabilities = renderer.getCapabilities();
+      capability.textContent = `WebGL2 · max texture ${capabilities.maxTextureSize} · precision ${capabilities.precision}`;
+      orbit = new OrbitControls(renderer.camera, renderer.canvas);
+      orbit.enableDamping = false;
+      orbit.minDistance = 2.7;
+      orbit.maxDistance = 8;
+      orbit.target.set(0, 0, 0);
+      orbit.update();
+      renderer.start();
+    } catch (error) {
+      rig.dispose();
+      status.textContent =
+        error instanceof Error ? error.message : 'Renderer could not start.';
+    }
     updateReadout();
-    return;
   }
-  const capabilities = renderer.getCapabilities();
-  capability.textContent = `WebGL2 · max texture ${capabilities.maxTextureSize} · precision ${capabilities.precision}`;
-  const orbit = new OrbitControls(renderer.camera, renderer.canvas);
-  orbit.enableDamping = false;
-  orbit.minDistance = 2.7;
-  orbit.maxDistance = 8;
-  orbit.target.set(0, 0, 0);
-  orbit.update();
+  startRig(rig);
+
+  loadButton.addEventListener('click', async () => {
+    const glb = glbInput.files?.[0];
+    const json = manifestInput.files?.[0];
+    if (!glb || !json) {
+      status.textContent = 'Choose both a prepared GLB and its manifest JSON.';
+      return;
+    }
+    loadButton.disabled = true;
+    status.textContent = 'Validating prepared avatar…';
+    try {
+      const parsed: unknown = JSON.parse(await json.text());
+      const loaded = await PreparedAvatarRig.load(glb, parsed);
+      startRig(loaded);
+    } catch (error) {
+      status.textContent =
+        error instanceof Error
+          ? error.message
+          : 'Prepared avatar could not load.';
+    } finally {
+      loadButton.disabled = false;
+    }
+  });
+  fixtureButton.addEventListener('click', () =>
+    startRig(new KnownGoodAvatar()),
+  );
 
   poseSelect.addEventListener('change', () => {
     const index = referencePoses.findIndex(
@@ -524,6 +580,5 @@ export function mountAvatarLab(host: HTMLElement): void {
     return window.performance.now();
   }
   updateReadout();
-  renderer.start();
-  window.addEventListener('pagehide', () => orbit.dispose(), { once: true });
+  window.addEventListener('pagehide', () => orbit?.dispose(), { once: true });
 }

@@ -7,6 +7,7 @@ export type ProviderErrorCode =
   | 'invalid_request'
   | 'not_found'
   | 'provider_unavailable'
+  | 'downstream_unavailable'
   | 'provider_protocol'
   | 'network_or_cors'
   | 'invalid_response'
@@ -21,6 +22,8 @@ const messages: Record<ProviderErrorCode, string> = {
   invalid_request: 'fal rejected the request. Check its input and try again.',
   not_found: 'The requested fal endpoint is unavailable.',
   provider_unavailable: 'fal is unavailable. Try again later.',
+  downstream_unavailable:
+    'A service used by fal could not complete this job. Keep its request ID and check billing before starting another generation.',
   provider_protocol:
     'fal rejected a queue operation. This integration may need an update.',
   network_or_cors:
@@ -32,18 +35,21 @@ const messages: Record<ProviderErrorCode, string> = {
 export class ProviderError extends Error {
   readonly code: ProviderErrorCode;
   readonly status: number | undefined;
+  readonly retryable: boolean | undefined;
 
-  constructor(code: ProviderErrorCode, status?: number) {
+  constructor(code: ProviderErrorCode, status?: number, retryable?: boolean) {
     super(messages[code]);
     this.name = 'ProviderError';
     this.code = code;
     this.status = status;
+    this.retryable = retryable;
   }
 }
 
 export function errorFromStatus(
   status: number,
   providerCode?: string,
+  retryable?: boolean,
 ): ProviderError {
   if (status === 401) return new ProviderError('authentication', status);
   if (
@@ -59,7 +65,9 @@ export function errorFromStatus(
   if (status === 405) return new ProviderError('provider_protocol', status);
   if (status === 400 || status === 422)
     return new ProviderError('invalid_request', status);
-  return new ProviderError('provider_unavailable', status);
+  if (providerCode === 'downstream_service_unavailable')
+    return new ProviderError('downstream_unavailable', status, retryable);
+  return new ProviderError('provider_unavailable', status, retryable);
 }
 
 export function normalizeProviderFailure(

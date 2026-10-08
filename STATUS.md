@@ -1,6 +1,40 @@
 # Project status
 
-## Current milestone: M7 — Avatar preparation research gate
+## Current image prompt policy
+
+New canonical jobs use `canonical-character-v10`; new multi-view jobs use `multiview-v3`. Both explicitly retain high detail in identity geometry, eyes, hair, color and materials while requiring skin without visible wrinkles, under-eye dark circles or obvious aging signs. Eye shape, eyelid anatomy, adult facial maturity and proportions remain identity constraints; the existing conditional under-20 age instruction remains. Previously generated images and their recorded prompt versions are unchanged. Real output quality needs manual review; no paid generation was run for this prompt update.
+
+## Reconstruction model comparison (after user review of M6 outputs)
+
+The user clarified that the principal failure is **identity loss in image-to-3D reconstruction**: the M4/M5 images look like the original person, but earlier raw meshes often did not. An apparently open hair crown was also observed in one Hunyuan output. The M6 review flow now offers Hunyuan 3D Pro 3.1, Tripo H3.1, Meshy 7.1 and portrait-tuned Hi3D 2.1; each submitted request records its model and exact source views, and completed results can be reopened from preserved local GLBs. The approved front image appears beside the 3D viewer, and acceptance explicitly requires recognizable face/head proportions. A selected result can be discarded without removing approved source views or other saved reconstructions. [Comparison protocol](docs/research/reconstruction-model-comparison.md). Hunyuan uses six views; the others use four cardinal views. One real user-run Hi3D result has better geometric likeness, but broader success rates and Safari behavior remain unverified. This comparison does not complete or replace the outstanding M8 avatar-preparation work.
+
+The first user-started Hi3D job returned HTTP 202 and `IN_PROGRESS` after prolonged polling, then completed and delivered a GLB. Its fal-provided status URL matched the client route. The client logs safe queue-state diagnostics and shows elapsed time plus a long-wait explanation; it waits for `COMPLETED` before fetching the result. The existing request ID remains recoverable after refresh without another paid POST.
+
+The user later received that Hi3D GLB and reported much better geometric likeness, but glossy plastic-like surfaces and a long generation time. Read-only inspection of the supplied 26.3 MB asset found one material spanning the entire head, a color texture and a metallic/roughness texture whose occupied texels are predominantly roughness ~0.5, with metalness zero. The user preferred the reversible matte preview, so it is now enabled automatically when any Hi3D result opens in the viewer; its checkbox can restore the raw material appearance. The original GLB remains untouched. A separate Hi3D fast option sends `1536profast` rather than `1536pro`, with the same portrait model and exact input views. Its real speed and likeness tradeoff remain unverified; no new paid job was submitted. Separate skin, hair and eye materials remain an M8 preparation requirement.
+
+## Current milestone: M8 — Production avatar builder (in progress)
+
+M0–M7 are accepted. M8 is **not complete**: no automatic prepared personalized avatar has been produced from the accepted M6 reconstruction. [M8 implementation evidence](docs/research/m8-implementation-progress.md) records the real-asset inspection, working runtime boundary and remaining gates. The external specification pack remains authoritative.
+
+| M8 requirement                                                            | Status              | Evidence / remaining work                                                                                                                                                                                                                 |
+| ------------------------------------------------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Preserve and inspect the original M6 identity source                      | TESTED              | The accepted 35.6 MB Hunyuan GLB was loaded locally and inspected in the orbit viewer. Its original bytes were not modified. The future builder must keep this guarantee.                                                                 |
+| Versioned, provider-independent prepared-avatar manifest                  | VERIFIED            | Parser checks fingerprints, coordinate axes, required anatomy and distinct semantic morph bindings; focused tests pass. A producer has not emitted a real manifest yet.                                                                   |
+| Semantic runtime adapter and deterministic synthetic controls             | VERIFIED            | A generated local glTF fixture loads through `PreparedAvatarRig`; tests drive full-head yaw, independent blink, gaze and jaw, reject a mismatched fingerprint, and exercise disposal. `/dev/avatar` exposes local prepared-asset loading. |
+| Automatic orientation, facial landmarks and source segmentation           | OPEN_IMPLEMENTATION | A local eight-angle probe found a frontal 478-landmark render and raycast eight features onto this GLB. No general per-avatar correspondence system or safe cut is implemented.                                                           |
+| ICT facial fitting and adapted expressions                                | OPEN_IMPLEMENTATION | A pinned MIT Light pack with 23 semantic deltas loads in-browser; an eight-feature rigid fit and wireframe overlay were tested on the real GLB. Nonrigid fitting and expression adaptation remain open.                                   |
+| Integrated 360° identity shell, seamless transition and materials         | OPEN_IMPLEMENTATION | The full ICT face overlay crosses beard, ear-side and neck regions; ADR-011 proposes an identity-aware boundary. No source cut, moving transition band or texture reprojection is implemented.                                            |
+| Fitted eyes, eyelids, jaw, oral cavity, teeth and tongue                  | OPEN_IMPLEMENTATION | The runtime format requires these nodes; the M6 mesh has none and the builder does not yet create them.                                                                                                                                   |
+| Derived GLB export, retained intermediate artifacts and quality rejection | OPEN_IMPLEMENTATION | Only the consumer validates a derived GLB. No builder, artifact persistence or measured quality gate exists.                                                                                                                              |
+| Multiple independently generated identities and browser visual acceptance | OPEN_IMPLEMENTATION | One confirmed real M6 GLB is available locally. No personalized prepared asset exists for visual inspection; Safari/Chrome quality evaluation cannot yet be requested.                                                                    |
+
+M8 status counts: **VERIFIED 2 · TESTED 1 · DEFERRED_VERIFICATION 0 · BLOCKED 0 · OPEN_IMPLEMENTATION 6**. M8 must not be described as complete while these items remain open.
+
+### M8 validation to date
+
+`pnpm check` passes strict typecheck, ESLint, Prettier, 112 deterministic tests, production build and debug build; `git diff --check` passes. `/dev/avatar` boots in local Chromium; `/dev/generation` detected 478 landmarks on the real GLB, selected its front orientation, lifted eight landmarks to the surface and displayed rigid and eight-point-warped ICT wireframes. The M8 template and landmark tooling are absent from the production build. No paid fal request or M9 implementation was used. ADR-011 is proposed, not accepted.
+
+## Previous milestone: M7 — Avatar preparation research gate
 
 M0–M6 are accepted. M7's **research and architectural decision are complete**; no prepared avatar or M8 builder has been implemented. The external specification pack at `/Users/cippo/Desktop/avatar3d-codex-spec-v3/` remains authoritative.
 
