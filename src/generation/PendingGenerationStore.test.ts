@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { PendingGenerationStore } from './PendingGenerationStore';
+import {
+  CANONICAL_MODEL_ID,
+  LEGACY_CANONICAL_MODEL_ID,
+} from './FalCanonicalImageGenerator';
 
 function memoryStore() {
   const values = new Map<string, string>();
@@ -24,7 +28,7 @@ describe('PendingGenerationStore', () => {
         requestId: 'req_123',
         metadata: {
           provider: 'fal',
-          modelId: 'fal-ai/nano-banana-2/edit',
+          modelId: CANONICAL_MODEL_ID,
           promptVersion: 'v1',
           finalPrompt: 'portrait',
           parameters: {},
@@ -35,6 +39,15 @@ describe('PendingGenerationStore', () => {
       }),
     ).toBe(true);
     expect(pending.read()?.requestId).toBe('req_123');
+    pending.write({
+      requestId: 'old_123',
+      metadata: {
+        ...pending.read()!.metadata,
+        modelId: LEGACY_CANONICAL_MODEL_ID,
+        providerRequestId: 'old_123',
+      },
+    });
+    expect(pending.read()?.metadata.modelId).toBe(LEGACY_CANONICAL_MODEL_ID);
     pending.clear();
     expect(pending.read()).toBeNull();
   });

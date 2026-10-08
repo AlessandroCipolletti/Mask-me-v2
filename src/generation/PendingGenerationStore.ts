@@ -1,4 +1,5 @@
 import type { GenerationMetadata } from './CharacterImageGenerator';
+import { isCanonicalModelId } from './FalCanonicalImageGenerator';
 
 const KEY = 'avatar-studio.pending-generation.v1';
 type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
@@ -21,7 +22,7 @@ function isPending(value: unknown): value is PendingGeneration {
   const metadata = item['metadata'] as Record<string, unknown>;
   return (
     metadata['provider'] === 'fal' &&
-    metadata['modelId'] === 'fal-ai/nano-banana-2/edit' &&
+    isCanonicalModelId(metadata['modelId']) &&
     metadata['providerRequestId'] === item['requestId'] &&
     typeof metadata['promptVersion'] === 'string' &&
     typeof metadata['finalPrompt'] === 'string' &&

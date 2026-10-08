@@ -100,6 +100,7 @@ describe('CanonicalSession', () => {
     let submitted!: (requestId: string) => void;
     let complete!: (value: CharacterGeneration) => void;
     let generateCalls = 0;
+    const recoveredModels: string[] = [];
     const generator: CharacterImageGenerator = {
       generate: (_source, options) => {
         generateCalls++;
@@ -108,7 +109,10 @@ describe('CanonicalSession', () => {
           complete = resolve;
         });
       },
-      recover: async () => result.image,
+      recover: async (_requestId, _signal, options) => {
+        recoveredModels.push(options?.modelId ?? '');
+        return result.image;
+      },
     };
     const session = new CanonicalSession(generator);
     session.review(source);
@@ -125,6 +129,7 @@ describe('CanonicalSession', () => {
 
     await session.recover('req_123', source, result.metadata);
     expect(generateCalls).toBe(1);
+    expect(recoveredModels).toEqual([result.metadata.modelId]);
     expect(session.state).toMatchObject({
       step: 'characterReview',
       result,

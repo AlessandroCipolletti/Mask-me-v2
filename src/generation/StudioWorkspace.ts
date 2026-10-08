@@ -10,9 +10,14 @@ import { FAL_ACCOUNT_URL } from '../provider/falAccount';
 import type { SourcePhoto } from './CharacterImageGenerator';
 import {
   buildCanonicalPrompt,
+  buildCanonicalSystemPrompt,
   CANONICAL_PROMPT_VERSION,
 } from './canonicalPrompt';
 import { createStudioServices } from './createStudioServices';
+import {
+  CANONICAL_MODEL_ID,
+  LEGACY_CANONICAL_MODEL_ID,
+} from './FalCanonicalImageGenerator';
 import { PendingGenerationStore } from './PendingGenerationStore';
 import { SourcePhotoStore } from './SourcePhotoStore';
 import './studio.css';
@@ -234,6 +239,7 @@ export function mountStudioWorkspace(
   let upload: HTMLInputElement | null = null;
   let diagnostics: HTMLPreElement | null = null;
   let recoveryInput: HTMLInputElement | null = null;
+  let recoveryModel: HTMLSelectElement | null = null;
   let recoveryButton: HTMLButtonElement | null = null;
   let recoveryStatus: HTMLParagraphElement | null = null;
   let recoveredImage: HTMLImageElement | null = null;
@@ -263,7 +269,7 @@ export function mountStudioWorkspace(
       el(
         'p',
         'studio-small',
-        'Paste a Nano Banana 2 edit request ID. This reads the existing job; it does not submit or charge for another generation.',
+        'Paste a Nano Banana edit request ID and select the model that created it. This only reads the existing job.',
       ),
     );
     const recoveryLabel = el('label', 'studio-label', 'fal request ID');
@@ -272,6 +278,18 @@ export function mountStudioWorkspace(
     recoveryInput.id = 'studio-recovery-id';
     recoveryInput.autocomplete = 'off';
     recoveryInput.spellcheck = false;
+    const recoveryModelLabel = el('label', 'studio-label', 'fal model');
+    recoveryModelLabel.htmlFor = 'studio-recovery-model';
+    recoveryModel = el('select', 'studio-input');
+    recoveryModel.id = 'studio-recovery-model';
+    for (const [label, id] of [
+      ['Nano Banana 2.1', CANONICAL_MODEL_ID],
+      ['Nano Banana 2 (earlier jobs)', LEGACY_CANONICAL_MODEL_ID],
+    ] as const) {
+      const option = el('option', undefined, label);
+      option.value = id;
+      recoveryModel.append(option);
+    }
     recoveryButton = button('Recover existing image');
     recoveryStatus = el('p', 'studio-status');
     recoveryStatus.setAttribute('role', 'status');
@@ -281,6 +299,8 @@ export function mountStudioWorkspace(
     recovery.append(
       recoveryLabel,
       recoveryInput,
+      recoveryModelLabel,
+      recoveryModel,
       recoveryButton,
       recoveryStatus,
       recoveredImage,
@@ -412,6 +432,9 @@ export function mountStudioWorkspace(
             state.result?.metadata.promptVersion ?? CANONICAL_PROMPT_VERSION,
           finalPrompt:
             state.result?.metadata.finalPrompt ?? buildCanonicalPrompt(),
+          systemPrompt:
+            state.result?.metadata.parameters['system_prompt'] ??
+            buildCanonicalSystemPrompt(),
           phase: state.phase,
           result: state.result?.image ?? null,
           metadata: state.result?.metadata ?? null,
@@ -697,6 +720,7 @@ export function mountStudioWorkspace(
     if (
       recoveryController ||
       !recoveryInput ||
+      !recoveryModel ||
       !recoveryStatus ||
       !recoveredImage
     )
@@ -716,7 +740,11 @@ export function mountStudioWorkspace(
     recoveredImage.hidden = true;
     recoveryStatus.textContent = 'Reading the existing fal request…';
     try {
-      const image = await services.recoverExisting(requestId, active.signal);
+      const image = await services.recoverExisting(
+        requestId,
+        active.signal,
+        recoveryModel.value,
+      );
       if (recoveryController === active && !disposed) {
         recoveredImage.src = image.url;
         recoveredImage.hidden = false;

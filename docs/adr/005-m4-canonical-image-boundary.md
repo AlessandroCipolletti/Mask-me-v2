@@ -10,7 +10,7 @@ M4 turns one user-approved camera still into the canonical stylized character im
 
 Keep the unmirrored, full-resolution camera `Blob` as the source of truth. The mirrored video is display-only; the review image shows the actual pixels sent to the model. Stop the camera after capture, retain the still through generation failures, and revoke its preview object URL on replacement or page exit.
 
-Define the canonical prompt as versioned product logic. `CharacterImageGenerator` accepts a source still and returns one image plus safe provenance metadata. The Nano Banana 2 edit adapter owns its endpoint, parameters, input encoding and response validation. `FalClient` continues to own authentication, queue transport, polling and cancellation; it now returns the request ID alongside parsed data. A small composition root joins the adapter and transport, leaving the studio UI unaware of fal endpoints and response schemas.
+Define the canonical edit and system prompts as versioned product logic. The system prompt pins a consistent dimensional CG material, lighting and age-preservation policy for Nano Banana 2.1; the edit prompt carries the source-specific identity and framing instructions. Both are recorded in safe generation metadata. `CharacterImageGenerator` accepts a source still and returns one image plus safe provenance metadata. The fal canonical image adapter owns its endpoint, parameters, input encoding and response validation. New jobs use Nano Banana 2.1; recovery retains the model ID recorded for earlier Nano Banana 2 jobs. `FalClient` continues to own authentication, queue transport, polling and cancellation; it now returns the request ID alongside parsed data. A small composition root joins the adapter and transport, leaving the studio UI unaware of fal endpoints and response schemas.
 
 The M4 request sends the selected JPEG as a data URI in the single explicit model job. The image is not uploaded during capture/review or during tests. No automatic POST retry occurs after an ambiguous failure. Metadata includes provider, model ID, prompt version, final prompt, parameters, source ID, timestamp and provider request ID; it excludes key and image bytes.
 
@@ -22,7 +22,7 @@ The M4 request sends the selected JPEG as a data URI in the single explicit mode
 
 ## Evidence
 
-The [Nano Banana 2 edit API](https://fal.ai/models/fal-ai/nano-banana-2/edit/api) documents `image_urls`, data URI input, one-image output, 4:5 aspect ratio, PNG output, 2K resolution and the `images` response. Focused tests cover prompt constraints, job construction, metadata redaction, response validation and cancellation-sensitive session transitions. Real paid generation and image quality are deferred to user browser checks.
+The [Nano Banana 2.1 edit API](https://fal.ai/models/google/nano-banana-2.1/edit/api) documents `image_urls`, data URI input, one-image output, 4:5 aspect ratio, PNG output, 2K resolution and the `images` response. Focused tests cover prompt constraints, job construction, metadata redaction, response validation and cancellation-sensitive session transitions. Real paid generation and image quality are deferred to user browser checks.
 
 ## Consequences
 

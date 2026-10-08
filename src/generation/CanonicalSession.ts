@@ -116,6 +116,7 @@ export class CanonicalSession {
     });
     try {
       const image = await this.generator.recover(requestId, controller.signal, {
+        modelId: metadata.modelId,
         onPhase: (phase) => {
           if (revision === this.revision) this.set({ phase });
         },

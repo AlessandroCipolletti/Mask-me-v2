@@ -34,7 +34,7 @@ export interface CharacterImageGenerator {
   recover(
     requestId: string,
     signal?: AbortSignal,
-    options?: { onPhase?: (phase: ProviderPhase) => void },
+    options?: { onPhase?: (phase: ProviderPhase) => void; modelId?: string },
   ): Promise<CanonicalImage>;
   generate(
     source: SourcePhoto,

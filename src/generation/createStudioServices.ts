@@ -5,7 +5,7 @@ import {
   CanonicalSession,
   type CanonicalSessionState,
 } from './CanonicalSession';
-import { NanoBanana2CharacterGenerator } from './NanoBanana2CharacterGenerator';
+import { FalCanonicalImageGenerator } from './FalCanonicalImageGenerator';
 import type {
   CanonicalImage,
   GenerationMetadata,
@@ -22,18 +22,19 @@ export function createStudioServices(
   recoverExisting: (
     requestId: string,
     signal: AbortSignal,
+    modelId?: string,
   ) => Promise<CanonicalImage>;
   metadataFor: (sourcePhotoId: string, requestId: string) => GenerationMetadata;
 } {
   const client = new FalClient(credential, fetch, undefined, onDiagnostic);
-  const generator = new NanoBanana2CharacterGenerator(client);
+  const generator = new FalCanonicalImageGenerator(client);
   return {
     session: new CanonicalSession(generator, changed),
     checkConnection: async (signal) => {
       await client.checkConnection(signal);
     },
-    recoverExisting: (requestId, signal) =>
-      generator.recover(requestId, signal),
+    recoverExisting: (requestId, signal, modelId) =>
+      generator.recover(requestId, signal, modelId ? { modelId } : {}),
     metadataFor: (sourcePhotoId, requestId) =>
       generator.metadataFor(sourcePhotoId, requestId),
   };

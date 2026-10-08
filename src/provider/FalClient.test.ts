@@ -126,6 +126,24 @@ describe('FalClient', () => {
     ]);
   });
 
+  it('routes Nano Banana 2.1 edit status and result through its app alias', async () => {
+    const { client, fetcher } = setup([
+      json({ request_id: 'req_21' }),
+      json({ status: 'COMPLETED' }),
+      json({ images: [{ url: 'https://fal.media/result.png' }] }),
+    ]);
+    await client.run({
+      modelId: 'google/nano-banana-2.1/edit',
+      input: { prompt: 'fixture' },
+      parse: (value) => value,
+    });
+    expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual([
+      'https://queue.fal.run/google/nano-banana-2.1/edit',
+      'https://queue.fal.run/google/nano-banana-2.1/requests/req_21/status',
+      'https://queue.fal.run/google/nano-banana-2.1/requests/req_21',
+    ]);
+  });
+
   it('resumes an existing edit job with only read requests', async () => {
     const { client, fetcher } = setup([
       json({ status: 'COMPLETED' }),

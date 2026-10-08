@@ -2,6 +2,7 @@ import type { ProviderClient } from '../provider/ProviderClient';
 import { ProviderError } from '../provider/ProviderError';
 import {
   buildCanonicalPrompt,
+  buildCanonicalSystemPrompt,
   CANONICAL_PROMPT_VERSION,
 } from './canonicalPrompt';
 import type {
@@ -12,13 +13,19 @@ import type {
   SourcePhoto,
 } from './CharacterImageGenerator';
 
-const MODEL_ID = 'fal-ai/nano-banana-2/edit';
+export const CANONICAL_MODEL_ID = 'google/nano-banana-2.1/edit';
+export const LEGACY_CANONICAL_MODEL_ID = 'fal-ai/nano-banana-2/edit';
+
+export function isCanonicalModelId(value: unknown): value is string {
+  return value === CANONICAL_MODEL_ID || value === LEGACY_CANONICAL_MODEL_ID;
+}
 const PARAMETERS = {
   num_images: 1,
   aspect_ratio: '4:5',
   output_format: 'png',
   resolution: '2K',
   limit_generations: true,
+  thinking_level: 'medium',
 } as const;
 
 function parseImage(value: unknown): CanonicalImage {
@@ -33,8 +40,8 @@ function parseImage(value: unknown): CanonicalImage {
   const contentType = item['content_type'];
   if (
     typeof url !== 'string' ||
-    typeof contentType !== 'string' ||
-    !contentType.startsWith('image/')
+    (contentType != null &&
+      (typeof contentType !== 'string' || !contentType.startsWith('image/')))
   )
     throw new ProviderError('invalid_response');
   let parsed: URL;
@@ -56,7 +63,7 @@ function parseImage(value: unknown): CanonicalImage {
     throw new ProviderError('invalid_response');
   return {
     url: parsed.href,
-    contentType,
+    contentType: typeof contentType === 'string' ? contentType : 'image/png',
     ...(typeof width === 'number' ? { width } : {}),
     ...(typeof height === 'number' ? { height } : {}),
   };
@@ -94,7 +101,7 @@ export function blobToDataUri(
 }
 
 /** Model-specific input/output policy; transport and UI never know its schema. */
-export class NanoBanana2CharacterGenerator implements CharacterImageGenerator {
+export class FalCanonicalImageGenerator implements CharacterImageGenerator {
   constructor(
     private readonly provider: ProviderClient,
     private readonly encode: typeof blobToDataUri = blobToDataUri,
@@ -107,10 +114,13 @@ export class NanoBanana2CharacterGenerator implements CharacterImageGenerator {
   ): GenerationMetadata {
     return {
       provider: 'fal',
-      modelId: MODEL_ID,
+      modelId: CANONICAL_MODEL_ID,
       promptVersion: CANONICAL_PROMPT_VERSION,
       finalPrompt: buildCanonicalPrompt(),
-      parameters: PARAMETERS,
+      parameters: {
+        ...PARAMETERS,
+        system_prompt: buildCanonicalSystemPrompt(),
+      },
       sourcePhotoId,
       timestamp: this.now().toISOString(),
       providerRequestId,
@@ -122,15 +132,22 @@ export class NanoBanana2CharacterGenerator implements CharacterImageGenerator {
     requestId: string,
     signal?: AbortSignal,
     options?: {
+      modelId?: string;
       onPhase?: (
         phase: import('../provider/ProviderClient').ProviderPhase,
       ) => void;
     },
   ): Promise<CanonicalImage> {
+    const modelId = options?.modelId ?? CANONICAL_MODEL_ID;
+    if (!isCanonicalModelId(modelId))
+      throw new ProviderError('invalid_request');
     const result = await this.provider.resume(
-      { modelId: MODEL_ID, parse: parseImage },
+      { modelId, parse: parseImage },
       requestId,
-      { ...(signal ? { signal } : {}), ...options },
+      {
+        ...(signal ? { signal } : {}),
+        ...(options?.onPhase ? { onPhase: options.onPhase } : {}),
+      },
     );
     return result.data;
   }
@@ -160,8 +177,13 @@ export class NanoBanana2CharacterGenerator implements CharacterImageGenerator {
     const finalPrompt = buildCanonicalPrompt();
     const result = await this.provider.run(
       {
-        modelId: MODEL_ID,
-        input: { prompt: finalPrompt, image_urls: [imageUri], ...PARAMETERS },
+        modelId: CANONICAL_MODEL_ID,
+        input: {
+          prompt: finalPrompt,
+          system_prompt: buildCanonicalSystemPrompt(),
+          image_urls: [imageUri],
+          ...PARAMETERS,
+        },
         parse: parseImage,
       },
       options,
