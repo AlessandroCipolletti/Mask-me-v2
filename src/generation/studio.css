@@ -3,6 +3,9 @@
   margin: 0 auto;
   padding: clamp(36px, 7vh, 80px) 0 64px;
 }
+.studio-workspace [hidden] {
+  display: none !important;
+}
 .studio-workspace h2 {
   margin: 0 0 12px;
   font-size: 20px;
@@ -117,11 +120,60 @@
   max-height: 600px;
   object-fit: contain;
 }
+.studio-contact-sheet {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px 12px;
+  margin: 20px 0 28px;
+}
+.studio-view-item {
+  min-width: 0;
+  margin: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #d8dcd5;
+}
+.studio-view-image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  object-fit: contain;
+  background: #292e2a;
+  border-radius: 6px;
+}
+.studio-view-placeholder {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  margin: 0;
+  border-radius: 6px;
+  background: #e6e8e3;
+  color: #60665d;
+  font-size: 13px;
+}
+.studio-view-item figcaption {
+  margin-top: 9px;
+  font-size: 15px;
+  font-weight: 500;
+}
+.studio-view-item .studio-small {
+  margin: 6px 0;
+}
+.studio-view-item .studio-actions {
+  align-items: stretch;
+  margin: 8px 0;
+}
+.studio-view-item button {
+  font-size: 13px;
+}
 @media (max-width: 650px) {
   .studio-workspace {
     width: min(100% - 24px, 920px);
   }
   .studio-frame {
     aspect-ratio: 3 / 4;
+  }
+  .studio-contact-sheet {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

@@ -6,6 +6,8 @@ import {
   type CanonicalSessionState,
 } from './CanonicalSession';
 import { FalCanonicalImageGenerator } from './FalCanonicalImageGenerator';
+import { FalViewImageGenerator } from './FalViewImageGenerator';
+import { ViewSetSession, type ViewSetState } from './ViewSetSession';
 import type {
   CanonicalImage,
   GenerationMetadata,
@@ -15,9 +17,11 @@ import type {
 export function createStudioServices(
   credential: VolatileCredential,
   changed: (state: CanonicalSessionState) => void,
+  viewChanged: (state: ViewSetState) => void,
   onDiagnostic?: FalDiagnosticSink,
 ): {
   session: CanonicalSession;
+  views: ViewSetSession;
   checkConnection: (signal: AbortSignal) => Promise<void>;
   recoverExisting: (
     requestId: string,
@@ -28,8 +32,10 @@ export function createStudioServices(
 } {
   const client = new FalClient(credential, fetch, undefined, onDiagnostic);
   const generator = new FalCanonicalImageGenerator(client);
+  const viewGenerator = new FalViewImageGenerator(client);
   return {
     session: new CanonicalSession(generator, changed),
+    views: new ViewSetSession(viewGenerator, viewChanged),
     checkConnection: async (signal) => {
       await client.checkConnection(signal);
     },

@@ -61,6 +61,22 @@ export class CanonicalSession {
     });
   }
 
+  /** Restore a completed character from tab-scoped M5 state without a new POST. */
+  restore(
+    result: CharacterGeneration,
+    source: SourcePhoto | null = null,
+  ): void {
+    this.cancel('pause');
+    this.set({
+      step: 'characterReview',
+      source,
+      result,
+      phase: null,
+      error: null,
+      requestId: null,
+    });
+  }
+
   backToPhoto(): void {
     this.cancel();
     if (this.stateValue.source)

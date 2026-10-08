@@ -28,7 +28,7 @@ const PARAMETERS = {
   thinking_level: 'medium',
 } as const;
 
-function parseImage(value: unknown): CanonicalImage {
+export function parseFalImage(value: unknown): CanonicalImage {
   if (!value || typeof value !== 'object' || !('images' in value))
     throw new ProviderError('invalid_response');
   const images = value.images;
@@ -142,7 +142,7 @@ export class FalCanonicalImageGenerator implements CharacterImageGenerator {
     if (!isCanonicalModelId(modelId))
       throw new ProviderError('invalid_request');
     const result = await this.provider.resume(
-      { modelId, parse: parseImage },
+      { modelId, parse: parseFalImage },
       requestId,
       {
         ...(signal ? { signal } : {}),
@@ -184,7 +184,7 @@ export class FalCanonicalImageGenerator implements CharacterImageGenerator {
           image_urls: [imageUri],
           ...PARAMETERS,
         },
-        parse: parseImage,
+        parse: parseFalImage,
       },
       options,
     );

@@ -20,6 +20,9 @@ import {
 } from './FalCanonicalImageGenerator';
 import { PendingGenerationStore } from './PendingGenerationStore';
 import { SourcePhotoStore } from './SourcePhotoStore';
+import { ViewSetStore } from './ViewSetStore';
+import { viewSetReady, type ViewSetState } from './ViewSetSession';
+import { VIEW_IDS, VIEW_LABELS, type GeneratedViewId } from './viewPrompts';
 import './studio.css';
 
 const SAVED_KEY_MASK = '************';
@@ -50,6 +53,8 @@ export function mountStudioWorkspace(
   const keyStorage = new VerifiedKeyStorage();
   const pendingStore = new PendingGenerationStore();
   const photoStore = new SourcePhotoStore();
+  const viewStore = new ViewSetStore();
+  const restoredViewSet = viewStore.read();
   let pendingRecord = pendingStore.read();
   const stalePhotoCleanup = pendingRecord
     ? Promise.resolve()
@@ -59,6 +64,7 @@ export function mountStudioWorkspace(
   const services = createStudioServices(
     credential,
     onSessionChanged,
+    onViewChanged,
     (event) => {
       if (event.operation === 'pricing_check') {
         diagnosticEvents.push(event);
@@ -69,6 +75,7 @@ export function mountStudioWorkspace(
     },
   );
   const session = services.session;
+  const views = services.views;
   const camera = new CameraService(() => {
     cameraMessage = 'Camera stopped. Enable it again to take a photo.';
     render();
@@ -89,6 +96,7 @@ export function mountStudioWorkspace(
   let resuming = false;
   let resumeRequested = false;
   let preparingGeneration = false;
+  let viewSectionOpen = false;
 
   function onSessionChanged(
     state: import('./CanonicalSession').CanonicalSessionState,
@@ -107,6 +115,11 @@ export function mountStudioWorkspace(
       pendingRecord = null;
       pendingStore.clear();
     }
+    render();
+  }
+
+  function onViewChanged(state: ViewSetState): void {
+    viewStore.write(state);
     render();
   }
 
@@ -131,7 +144,7 @@ export function mountStudioWorkspace(
   const keyDetail = el(
     'p',
     'studio-small',
-    'Your key is saved in this browser only after a successful connection check. Clear key removes it. Creating a character sends your chosen still photo to fal and may incur a charge. The photo is kept locally while a request may need refresh recovery. Live camera video stays on your device.',
+    'Your key is saved in this browser only after a successful connection check. Clear key removes it. Character and view generation send selected images to fal and may incur charges. The photo is kept locally while a request may need refresh recovery. Live camera video stays on your device.',
   );
   const keyLabel = el('label', 'studio-label', 'fal API key');
   keyLabel.htmlFor = 'studio-key-input';
@@ -215,7 +228,8 @@ export function mountStudioWorkspace(
   const cancel = button('Cancel generation');
   const retryRecovery = button('Resume existing request');
   const forgetRecovery = button('Forget saved request');
-  const regenerate = button('Regenerate character', true);
+  const regenerate = button('Regenerate character');
+  const continueToViews = button('Continue to views', true);
   const back = button('Back to photo');
   actions.append(
     enable,
@@ -227,6 +241,7 @@ export function mountStudioWorkspace(
     retryRecovery,
     forgetRecovery,
     regenerate,
+    continueToViews,
     back,
   );
   const status = el('p', 'studio-status');
@@ -236,6 +251,115 @@ export function mountStudioWorkspace(
   stage.append(stageTitle, stageHint, frame, actions, status, error);
   main.append(stage);
 
+  const viewStage = el('section', 'studio-stage studio-views');
+  const viewTitle = el('h2', undefined, 'Review all angles');
+  const viewHint = el(
+    'p',
+    'studio-small',
+    'The front image is the reference for every new angle. Review identity, hair, ears, profile and rear silhouette before accepting each view.',
+  );
+  const viewSheet = el('div', 'studio-contact-sheet');
+  const frontCard = el('figure', 'studio-view-item');
+  const frontImage = el('img', 'studio-view-image');
+  frontImage.alt = 'Canonical front view';
+  let frontLoaded = false;
+  let frontImageFailed = false;
+  frontImage.addEventListener('load', () => {
+    frontLoaded = frontImage.naturalWidth > 0;
+    frontImageFailed = false;
+    render();
+  });
+  frontImage.addEventListener('error', () => {
+    frontLoaded = false;
+    frontImageFailed = true;
+    render();
+  });
+  frontCard.append(
+    frontImage,
+    el('figcaption', undefined, 'Front · canonical'),
+  );
+  viewSheet.append(frontCard);
+  const viewCards = {} as Record<
+    GeneratedViewId,
+    {
+      image: HTMLImageElement;
+      placeholder: HTMLParagraphElement;
+      status: HTMLParagraphElement;
+      quality: HTMLParagraphElement;
+      accept: HTMLButtonElement;
+      flag: HTMLButtonElement;
+      retry: HTMLButtonElement;
+      forget: HTMLButtonElement;
+      debug: HTMLPreElement;
+    }
+  >;
+  for (const view of VIEW_IDS) {
+    const item = el('figure', 'studio-view-item');
+    const image = el('img', 'studio-view-image');
+    image.alt = VIEW_LABELS[view];
+    const placeholder = el('p', 'studio-view-placeholder', 'Awaiting image');
+    const caption = el('figcaption', undefined, VIEW_LABELS[view]);
+    const viewStatus = el('p', 'studio-small');
+    const quality = el('p', 'studio-small');
+    const controls = el('div', 'studio-actions');
+    const accept = button('Accept view');
+    const flag = button('Needs retry');
+    const retry = button('Generate view');
+    const forget = button('Forget request');
+    controls.append(accept, flag, retry, forget);
+    const debug = el('pre', 'studio-diagnostics');
+    if (!showDebug) debug.hidden = true;
+    item.append(
+      image,
+      placeholder,
+      caption,
+      viewStatus,
+      quality,
+      controls,
+      debug,
+    );
+    viewSheet.append(item);
+    viewCards[view] = {
+      image,
+      placeholder,
+      status: viewStatus,
+      quality,
+      accept,
+      flag,
+      retry,
+      forget,
+      debug,
+    };
+    image.addEventListener('load', () => {
+      if (image.naturalWidth > 0 && image.naturalHeight > 0)
+        views.reportDimensions(view, image.naturalWidth, image.naturalHeight);
+    });
+    image.addEventListener('error', () => views.reportUnavailable(view));
+    accept.addEventListener('click', () => views.review(view, 'accepted'));
+    flag.addEventListener('click', () => views.review(view, 'flagged'));
+    retry.addEventListener('click', () => {
+      if (credential.ready) void views.retry(view);
+    });
+    forget.addEventListener('click', () => views.forgetPending(view));
+  }
+  const viewActions = el('div', 'studio-actions');
+  const generateViews = button('Generate five views', true);
+  const resumeViews = button('Resume existing views');
+  const pauseViews = button('Pause checking');
+  const backToCharacter = button('Back to character');
+  const newCharacter = button('Start a new character');
+  viewActions.append(
+    generateViews,
+    resumeViews,
+    pauseViews,
+    backToCharacter,
+    newCharacter,
+  );
+  const viewSummary = el('p', 'studio-status');
+  viewSummary.setAttribute('role', 'status');
+  viewStage.append(viewTitle, viewHint, viewSheet, viewActions, viewSummary);
+  main.append(viewStage);
+
   let upload: HTMLInputElement | null = null;
   let diagnostics: HTMLPreElement | null = null;
   let recoveryInput: HTMLInputElement | null = null;
@@ -243,6 +367,9 @@ export function mountStudioWorkspace(
   let recoveryButton: HTMLButtonElement | null = null;
   let recoveryStatus: HTMLParagraphElement | null = null;
   let recoveredImage: HTMLImageElement | null = null;
+  let canonicalFixtureInput: HTMLInputElement | null = null;
+  let canonicalFixtureButton: HTMLButtonElement | null = null;
+  let canonicalFixtureStatus: HTMLParagraphElement | null = null;
   if (showDebug) {
     const tools = el('section', 'studio-dev');
     tools.append(el('h2', undefined, 'Generation lab'));
@@ -250,7 +377,7 @@ export function mountStudioWorkspace(
       el(
         'p',
         'studio-small',
-        'Upload an image to exercise M4 without camera. A model request occurs only when you click Create or Regenerate.',
+        'Upload an image to exercise M4 without camera, or use an existing canonical URL for M5. Model requests occur only after you click a generation button.',
       ),
     );
     upload = el('input');
@@ -261,6 +388,30 @@ export function mountStudioWorkspace(
     diagnostics = el('pre', 'studio-diagnostics');
     details.append(diagnostics);
     tools.append(upload, details);
+    const fixture = el('details', 'studio-recovery');
+    fixture.append(el('summary', undefined, 'Use an existing canonical image'));
+    fixture.append(
+      el(
+        'p',
+        'studio-small',
+        'Paste a public HTTPS image URL to inspect M5 without creating a new M4 image. View generation still makes paid requests only after you click a Generate button.',
+      ),
+    );
+    const fixtureLabel = el('label', 'studio-label', 'Canonical image URL');
+    fixtureLabel.htmlFor = 'studio-canonical-url';
+    canonicalFixtureInput = el('input', 'studio-input');
+    canonicalFixtureInput.id = 'studio-canonical-url';
+    canonicalFixtureInput.type = 'url';
+    canonicalFixtureInput.autocomplete = 'off';
+    canonicalFixtureButton = button('Use image as canonical');
+    canonicalFixtureStatus = el('p', 'studio-status');
+    fixture.append(
+      fixtureLabel,
+      canonicalFixtureInput,
+      canonicalFixtureButton,
+      canonicalFixtureStatus,
+    );
+    tools.append(fixture);
     const recovery = el('details', 'studio-recovery');
     recovery.append(
       el('summary', undefined, 'Recover an existing fal request'),
@@ -336,6 +487,9 @@ export function mountStudioWorkspace(
   function render(): void {
     if (disposed) return;
     const state = session.state;
+    const viewState = views.state;
+    stage.hidden = viewSectionOpen;
+    viewStage.hidden = !viewSectionOpen;
     const step = state.step;
     const isCamera = step === 'camera';
     const isReview = step === 'photoReview';
@@ -379,7 +533,7 @@ export function mountStudioWorkspace(
     stop.hidden = !isCamera || !camera.active;
     create.hidden = !isReview || !!pendingRecord;
     create.disabled = !credential.ready || preparingGeneration;
-    retake.hidden = !isReview;
+    retake.hidden = !isReview && !(isCharacter && !state.source);
     cancel.hidden = !isGenerating;
     cancel.textContent = resuming ? 'Stop checking' : 'Cancel generation';
     retryRecovery.hidden = !pendingRecord || isGenerating;
@@ -389,6 +543,7 @@ export function mountStudioWorkspace(
     regenerate.disabled =
       !credential.ready || !state.source || preparingGeneration;
     back.hidden = !isCharacter || !state.source;
+    continueToViews.hidden = !isCharacter;
     status.textContent = isGenerating
       ? {
           submitting: 'Submitting to fal…',
@@ -439,10 +594,108 @@ export function mountStudioWorkspace(
           result: state.result?.image ?? null,
           metadata: state.result?.metadata ?? null,
           error: state.error,
+          viewSet: viewState,
         },
         null,
         2,
       );
+
+    if (viewSectionOpen && viewState.reference) {
+      if (frontImage.src !== viewState.reference.image.url) {
+        frontLoaded = false;
+        frontImageFailed = false;
+        frontImage.src = viewState.reference.image.url;
+      }
+      const entries = VIEW_IDS.map((view) => viewState.views[view]);
+      const completed = entries.filter(
+        (entry) => entry.status === 'ready',
+      ).length;
+      const pending = entries.some((entry) => !!entry.pendingMetadata);
+      const missing = entries.some(
+        (entry) =>
+          (entry.status === 'empty' || entry.status === 'failed') &&
+          !entry.pendingMetadata,
+      );
+      generateViews.hidden = !missing;
+      generateViews.textContent =
+        completed === 0 ? 'Generate five views' : 'Generate remaining views';
+      generateViews.disabled =
+        !credential.ready || viewState.batchRunning || !frontLoaded;
+      resumeViews.hidden = !pending || viewState.batchRunning;
+      resumeViews.disabled = !credential.ready;
+      pauseViews.hidden = !viewState.batchRunning;
+      backToCharacter.disabled = viewState.batchRunning;
+      viewSummary.textContent = !frontLoaded
+        ? frontImageFailed
+          ? 'The canonical image could not be displayed. Check its URL or start a new character.'
+          : 'Loading the canonical image. View generation is available when it appears.'
+        : viewSetReady(viewState)
+          ? 'All six views reviewed. The set is ready for 3D reconstruction in the next milestone.'
+          : `${completed} of 5 additional views generated. Review and accept each image. ${viewState.batchRunning ? 'Checking fal jobs…' : ''}`;
+      for (const view of VIEW_IDS) {
+        const entry = viewState.views[view];
+        const card = viewCards[view];
+        const url = entry.result?.image.url;
+        if (url && card.image.src !== url) card.image.src = url;
+        if (!url && card.image.hasAttribute('src'))
+          card.image.removeAttribute('src');
+        card.image.hidden = !url;
+        card.placeholder.hidden = !!url;
+        card.status.textContent =
+          entry.status === 'generating'
+            ? `${entry.phase ?? 'submitting'} at fal…`
+            : entry.status === 'paused'
+              ? 'Existing request paused; resume without another charge.'
+              : entry.status === 'ready'
+                ? entry.review === 'accepted'
+                  ? 'Accepted'
+                  : entry.review === 'flagged'
+                    ? 'Marked for retry'
+                    : 'Awaiting your review'
+                : entry.status === 'failed'
+                  ? (entry.error ?? 'Generation failed. Other views were kept.')
+                  : entry.status === 'waiting'
+                    ? 'Waiting for a free generation slot…'
+                    : 'Not generated';
+        card.quality.textContent = entry.qualityReasons.length
+          ? `Check: ${entry.qualityReasons.join(', ').replaceAll('_', ' ')}`
+          : '';
+        card.accept.hidden =
+          !entry.result ||
+          entry.status !== 'ready' ||
+          entry.review === 'accepted';
+        card.accept.disabled = entry.qualityReasons.some(
+          (reason) => reason !== 'dimensions_unverified',
+        );
+        card.flag.hidden =
+          !entry.result ||
+          entry.status !== 'ready' ||
+          entry.review === 'flagged';
+        card.retry.hidden =
+          entry.status === 'generating' ||
+          entry.status === 'waiting' ||
+          !!entry.pendingMetadata;
+        card.retry.disabled =
+          !credential.ready || viewState.batchRunning || !frontLoaded;
+        card.retry.textContent = entry.result
+          ? 'Regenerate view'
+          : 'Generate view';
+        card.forget.hidden =
+          !entry.pendingMetadata || entry.status === 'generating';
+        card.forget.disabled = viewState.batchRunning;
+        if (showDebug)
+          card.debug.textContent = JSON.stringify(
+            {
+              view,
+              metadata: entry.result?.metadata ?? entry.pendingMetadata,
+              qualityReasons: entry.qualityReasons,
+              error: entry.error,
+            },
+            null,
+            2,
+          );
+      }
+    }
   }
 
   async function resumePending(): Promise<void> {
@@ -502,12 +755,14 @@ export function mountStudioWorkspace(
     try {
       credential.set(keyInput.value);
       session.cancel(pendingRecord ? 'pause' : undefined);
+      views.pause();
       keyStorage.forget();
       storedKey = false;
       keyMessage = 'Key ready. Check connection to save it for refresh.';
       checkMessage = '';
       if (resuming) resumeRequested = true;
       else void resumePending();
+      void views.resumePending();
     } catch {
       keyMessage = 'Enter a valid fal API key.';
     }
@@ -536,6 +791,7 @@ export function mountStudioWorkspace(
   clearKey.addEventListener('click', () => {
     abortCheck();
     session.cancel();
+    views.pause();
     credential.clear();
     pendingRecord = null;
     pendingStore.clear();
@@ -637,6 +893,7 @@ export function mountStudioWorkspace(
   async function generateWithSavedSource(): Promise<void> {
     const source = session.state.source;
     if (!source || preparingGeneration) return;
+    if (views.state.reference) views.clear();
     preparingGeneration = true;
     render();
     try {
@@ -665,6 +922,33 @@ export function mountStudioWorkspace(
   });
   back.addEventListener('click', () => session.backToPhoto());
   retake.addEventListener('click', () => {
+    views.clear();
+    session.retake();
+    setPreview(null);
+    void photoStore.clear();
+    void startCamera();
+  });
+  continueToViews.addEventListener('click', () => {
+    const result = session.state.result;
+    if (!result) return;
+    viewSectionOpen = true;
+    views.start(result);
+    render();
+  });
+  generateViews.addEventListener('click', () => {
+    if (credential.ready) void views.generateMissing();
+  });
+  resumeViews.addEventListener('click', () => {
+    if (credential.ready) void views.resumePending();
+  });
+  pauseViews.addEventListener('click', () => views.pause());
+  backToCharacter.addEventListener('click', () => {
+    viewSectionOpen = false;
+    render();
+  });
+  newCharacter.addEventListener('click', () => {
+    views.clear();
+    viewSectionOpen = false;
     session.retake();
     setPreview(null);
     void photoStore.clear();
@@ -766,6 +1050,41 @@ export function mountStudioWorkspace(
       recoveryStatus.textContent =
         'The recovered image URL could not be displayed.';
   });
+  canonicalFixtureButton?.addEventListener('click', () => {
+    if (!canonicalFixtureInput || !canonicalFixtureStatus) return;
+    let url: URL;
+    try {
+      url = new URL(canonicalFixtureInput.value.trim());
+    } catch {
+      canonicalFixtureStatus.textContent = 'Enter a valid HTTPS image URL.';
+      return;
+    }
+    if (url.protocol !== 'https:' || url.username || url.password) {
+      canonicalFixtureStatus.textContent = 'Enter a public HTTPS image URL.';
+      return;
+    }
+    const reference = {
+      image: { url: url.href, contentType: 'image/png' },
+      metadata: {
+        provider: 'fal',
+        modelId: CANONICAL_MODEL_ID,
+        promptVersion: 'development-fixture-v1',
+        finalPrompt:
+          'Existing canonical image URL supplied in the development lab.',
+        parameters: {},
+        sourcePhotoId: 'development-fixture',
+        timestamp: new Date().toISOString(),
+        providerRequestId: `fixture_${Date.now()}`,
+      },
+    };
+    views.clear();
+    session.restore(reference);
+    viewSectionOpen = true;
+    views.start(reference);
+    canonicalFixtureStatus.textContent =
+      'Canonical image loaded as the M5 reference.';
+    render();
+  });
 
   function clearPage(): void {
     abortCheck();
@@ -776,6 +1095,7 @@ export function mountStudioWorkspace(
     if (recoveryInput) recoveryInput.value = '';
     if (recoveryStatus) recoveryStatus.textContent = '';
     session.cancel('pagehide');
+    views.pause();
     if (!pendingRecord) {
       session.retake();
       void photoStore.clear();
@@ -799,13 +1119,22 @@ export function mountStudioWorkspace(
     keyMessage = storedKey
       ? 'A previously checked key is saved in this browser.'
       : '';
+    if (views.state.reference && !session.state.result)
+      session.restore(views.state.reference);
     render();
     void resumePending();
+    if (credential.ready) void views.resumePending();
   }
   window.addEventListener('pagehide', onPageHide);
   window.addEventListener('pageshow', onPageShow);
+  if (restoredViewSet && !pendingRecord) {
+    session.restore(restoredViewSet.reference!);
+    viewSectionOpen = true;
+    views.restore(restoredViewSet);
+  } else if (restoredViewSet) viewStore.clear();
   render();
   void resumePending();
+  if (credential.ready) void views.resumePending();
   return () => {
     if (disposed) return;
     clearPage();

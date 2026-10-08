@@ -1,8 +1,39 @@
 # Project status
 
-## Current milestone: M4 — Canonical character generation
+## Current milestone: M5 — Multi-view generation
 
-M0 through M3 are accepted. M4 implementation is complete; real Nano Banana 2.1 image quality, camera and Safari behavior require the manual checks below. M5 has not started. The external specification pack at `/Users/cippo/Desktop/avatar3d-codex-spec-v3/` remains authoritative.
+M0 through M4 are accepted. M5 implementation is complete and awaits real paid multi-view quality and Safari verification by the user. M6 has not started. The external specification pack at `/Users/cippo/Desktop/avatar3d-codex-spec-v3/` remains authoritative.
+
+| M5 requirement                                      | Status                | Evidence / remaining check                                                                                                                                                                                                                                     |
+| --------------------------------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Six-view contract and reconstruction angles         | VERIFIED              | The M4 canonical image is `front`; five versioned prompts cover both 45° angles, both true profiles and the complete rear. Focused prompt tests check distinct directions and framing.                                                                         |
+| Canonical-only provider reference and safe metadata | VERIFIED              | All five adapter jobs send the same canonical HTTPS image URL in `image_urls`; mock tests inspect every job. Per-view metadata records model, prompt version, final prompt, parameters, reference request ID, angle, timestamp and request ID without the key. |
+| Bounded orchestration and independent retry         | VERIFIED              | `ViewSetSession` runs at most two jobs concurrently, retains successful results, retries one angle, and prevents a duplicate paid submit for a known pending ID. Deterministic tests cover these transitions.                                                  |
+| Pause and refresh recovery                          | VERIFIED              | Tab-scoped view-set storage retains URLs, results and acknowledged request IDs. Reload resumes GET-only jobs; unsent work needs an explicit Generate click. Tests cover storage validation, pause and read-only recovery. Real reload remains a browser check. |
+| Structural quality reasons and human review gate    | VERIFIED              | Image dimensions are read from fal metadata or the decoded browser image. The gate flags low resolution, wrong aspect ratio and unavailable images. Every angle requires explicit acceptance; visual identity, hair and accessories remain human judgments.    |
+| Production contact sheet and development inspection | TESTED                | The M5 review screen and fixture URL entry loaded in the in-app Chromium browser without a key or paid request. The contact sheet shows all six positions; `/dev/generation` exposes each view's prompt metadata and quality reasons.                          |
+| Real multi-view identity and geometry usefulness    | DEFERRED_VERIFICATION | User must generate and inspect real paid outputs, especially profile nose/ear/jaw depth and the rear skull/hair silhouette. No paid call was made by Codex.                                                                                                    |
+| Safari provider/image and refresh behavior          | DEFERRED_VERIFICATION | Real Safari image loading, queue recovery, visual review and repeated retry need user browser verification.                                                                                                                                                    |
+
+M5 status counts: **VERIFIED 5 · TESTED 1 · DEFERRED_VERIFICATION 2 · BLOCKED 0 · OPEN_IMPLEMENTATION 0**.
+
+### Manual M5 verification requested
+
+Run `pnpm dev` in Safari first, then Chrome. Start from a canonical image, click **Continue to views**, then **Generate five views** once (five paid fal jobs). Check that the two 45° views, both true profiles and rear view show the same character, hair volume, colors, accessories, neck and material style; check useful nose, ears, jaw, rear skull and hair silhouette. The browser Network tab should show each edit POST referencing the same canonical URL and no more than two active jobs. Accept good views, flag and regenerate one poor view, and confirm the others stay intact. Refresh while a view has an acknowledged request ID; confirm it resumes with status/result GETs and no new POST. Inspect per-view metadata and reasons in `/dev/generation`. If you already have a public canonical fal image URL, the development lab can use it directly without paying for another M4 image. Do not send the fal key.
+
+### M5 decisions and known issues
+
+- [ADR-008](docs/adr/008-m5-canonical-multiview.md): canonical-only references, two-job limit, per-view recovery, structural quality gate and manual acceptance.
+- Fal image URLs are retained only for the browser tab and may expire. An unacknowledged POST cannot be recovered after refresh; it may still have been charged. A known job that cannot be retrieved must be explicitly forgotten before a replacement submit.
+- Automated checks cannot establish that a side or rear image is the same character or even the correct viewing angle. The M5 visual exit criterion is `DEFERRED_VERIFICATION` until real outputs are reviewed.
+
+### M5 validation
+
+`pnpm check` passes typecheck, ESLint, Prettier, 71 focused tests, production build and debug build. `git diff --check` passes. The in-app Chromium browser opened `/dev/generation`, entered a public canonical fixture URL, inspected the six-view review surface, navigated back to the character and forward again, and reloaded the tab to restore the review state without a key or paid request. No M6 reconstruction code or real fal credential was used.
+
+## Previous milestone: M4 — Canonical character generation
+
+M0 through M3 were accepted before M4. M4 implementation was accepted; its real Nano Banana 2.1 image quality, camera and Safari checks remain historical manual checks below. M5 had not started at M4 completion. The external specification pack at `/Users/cippo/Desktop/avatar3d-codex-spec-v3/` remains authoritative.
 
 | M4 requirement                                             | Status                | Evidence / remaining check                                                                                                                                                                                                                                                                                                                |
 | ---------------------------------------------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
