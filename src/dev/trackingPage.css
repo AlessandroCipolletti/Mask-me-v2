@@ -1,0 +1,135 @@
+.tracking-lab-layout {
+  width: min(100% - 40px, 1280px);
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(300px, 1fr);
+  column-gap: 32px;
+  align-items: start;
+}
+
+.tracking-lab-layout > .eyebrow,
+.tracking-lab-layout > h1,
+.tracking-lab-layout > .description {
+  grid-column: 1 / -1;
+}
+
+.tracking-lab-layout > .camera-pane {
+  grid-column: 1;
+  position: sticky;
+  top: 24px;
+}
+
+.tracking-diagnostics {
+  grid-column: 2;
+  margin-top: 0;
+}
+
+.tracking-diagnostics h2,
+.tracking-diagnostics h3 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.tracking-diagnostics h3 {
+  margin-top: 28px;
+  font-size: 15px;
+}
+
+.tracking-diagnostics > p {
+  max-width: 720px;
+  color: #555a53;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.lab-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin: 20px 0;
+}
+
+.overlay-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.landmark-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  transform: scaleX(-1);
+}
+
+.diagnostic-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 32px;
+}
+
+.diagnostic-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid #e2e4de;
+  font-size: 13px;
+}
+
+.diagnostic-row strong,
+.matrix-output,
+.blendshape-table td {
+  font-variant-numeric: tabular-nums;
+}
+
+.matrix-output {
+  overflow-x: auto;
+  margin: 0;
+  padding: 16px;
+  background: #e8e9e3;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.blendshape-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.blendshape-table th,
+.blendshape-table td {
+  padding: 7px 0;
+  border-bottom: 1px solid #e2e4de;
+  text-align: left;
+}
+
+.blendshape-table td {
+  text-align: right;
+}
+
+@media (max-width: 900px) {
+  .tracking-lab-layout {
+    display: block;
+  }
+
+  .tracking-lab-layout > .camera-pane {
+    position: static;
+  }
+
+  .tracking-diagnostics {
+    margin-top: 40px;
+    padding-top: 24px;
+    border-top: 1px solid #d7d9d2;
+  }
+}
+
+@media (max-width: 650px) {
+  .diagnostic-grid {
+    grid-template-columns: 1fr;
+  }
+}
