@@ -88,7 +88,7 @@ afterEach(() => {
 });
 
 describe('CameraWorkspace photo lifecycle', () => {
-  it('keeps a photo after stop and through retake until a new capture replaces it', async () => {
+  it('keeps a photo after stop until another Take photo replaces it', async () => {
     photoSequence = 0;
     const tracks: Array<{ stop: ReturnType<typeof vi.fn> }> = [];
     const getUserMedia = vi.fn(async () => {
@@ -145,8 +145,10 @@ describe('CameraWorkspace photo lifecycle', () => {
     );
     expect(image?.src).toBe(firstUrl);
     expect(captureResult?.hidden).toBe(false);
+    expect(
+      findElement(main, (element) => element.textContent === 'Retake photo'),
+    ).toBeNull();
 
-    findButton(main, 'Retake photo').click();
     expect(getUserMedia).toHaveBeenCalledTimes(1);
     expect(workspace.capturedPhoto).toBe(firstPhoto);
     findButton(main, 'Take photo').click();
@@ -163,7 +165,7 @@ describe('CameraWorkspace photo lifecycle', () => {
     expect(image?.src).toBe(createObjectURL.mock.results[1]?.value);
     expect(revokeObjectURL).toHaveBeenCalledTimes(1);
 
-    findButton(main, 'Retake photo').click();
+    findButton(main, 'Enable camera').click();
     await vi.waitFor(() =>
       expect(findButton(main, 'Take photo').disabled).toBe(false),
     );

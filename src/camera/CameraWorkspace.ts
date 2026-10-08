@@ -40,7 +40,6 @@ export class CameraWorkspace {
   private readonly camera = new CameraService(() => this.handleCameraEnded());
   private readonly startButton = button('Enable camera', 'primary-button');
   private readonly captureButton = button('Take photo');
-  private readonly retakeButton = button('Retake photo');
   private readonly stopButton = button('Stop camera');
   private readonly deviceSelect = document.createElement('select');
   private readonly deviceRow = document.createElement('div');
@@ -94,13 +93,7 @@ export class CameraWorkspace {
     actions.className = 'camera-actions';
     this.captureButton.disabled = true;
     this.stopButton.disabled = true;
-    this.retakeButton.hidden = true;
-    actions.append(
-      this.startButton,
-      this.captureButton,
-      this.retakeButton,
-      this.stopButton,
-    );
+    actions.append(this.startButton, this.captureButton, this.stopButton);
 
     this.status.setAttribute('role', 'status');
     this.error.setAttribute('role', 'alert');
@@ -132,7 +125,6 @@ export class CameraWorkspace {
 
     this.startButton.addEventListener('click', () => void this.start());
     this.captureButton.addEventListener('click', () => void this.capture());
-    this.retakeButton.addEventListener('click', () => void this.retake());
     this.stopButton.addEventListener('click', () => this.stop());
     this.deviceSelect.addEventListener(
       'change',
@@ -214,7 +206,6 @@ export class CameraWorkspace {
       this.captureUrl = nextUrl;
       this.capturedImage.src = nextUrl;
       this.captureResult.hidden = false;
-      this.retakeButton.hidden = false;
       if (previousUrl) URL.revokeObjectURL(previousUrl);
       this.setStatus('Photo captured in memory. No upload was made.');
       this.setError(null);
@@ -230,23 +221,12 @@ export class CameraWorkspace {
     }
   }
 
-  private async retake(): Promise<void> {
-    if (!this.photo || this.disposed) return;
-    if (!this.camera.active) await this.start();
-    if (!this.camera.active) return;
-    this.setStatus(
-      'Camera ready. Take another photo to replace the current one.',
-    );
-    this.captureButton.focus();
-  }
-
   private clearCapture(): void {
     if (this.captureUrl) URL.revokeObjectURL(this.captureUrl);
     this.photo = null;
     this.captureUrl = null;
     this.capturedImage.removeAttribute('src');
     this.captureResult.hidden = true;
-    this.retakeButton.hidden = true;
   }
 
   stop(): void {
