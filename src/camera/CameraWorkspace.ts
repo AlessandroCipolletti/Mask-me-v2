@@ -48,10 +48,16 @@ export class CameraWorkspace {
   private readonly error = text('p', '', 'camera-error');
   private readonly capturedImage = document.createElement('img');
   private readonly captureResult = document.createElement('div');
+  private photo: Blob | null = null;
   private captureUrl: string | null = null;
   private disposed = false;
   private busy = false;
+  private capturing = false;
   private cameraVersion = 0;
+
+  get capturedPhoto(): Blob | null {
+    return this.photo;
+  }
 
   constructor(
     host: HTMLElement,
@@ -126,7 +132,7 @@ export class CameraWorkspace {
 
     this.startButton.addEventListener('click', () => void this.start());
     this.captureButton.addEventListener('click', () => void this.capture());
-    this.retakeButton.addEventListener('click', () => this.clearCapture());
+    this.retakeButton.addEventListener('click', () => void this.retake());
     this.stopButton.addEventListener('click', () => this.stop());
     this.deviceSelect.addEventListener(
       'change',
@@ -148,7 +154,11 @@ export class CameraWorkspace {
       if (this.disposed || !this.camera.active) return;
       this.previewFrame.style.aspectRatio = `${this.video.videoWidth} / ${this.video.videoHeight}`;
       this.captureButton.disabled = false;
-      this.setStatus('Camera ready. Live frames stay on this device.');
+      this.setStatus(
+        this.photo
+          ? 'Camera ready. Take another photo to replace the current one.'
+          : 'Camera ready. Live frames stay on this device.',
+      );
       void this.refreshDevices(version);
       this.options.onReady?.(this.video);
     } catch (error) {
@@ -186,14 +196,26 @@ export class CameraWorkspace {
   }
 
   private async capture(): Promise<void> {
+    if (this.capturing || this.disposed) return;
+    const version = this.cameraVersion;
+    this.capturing = true;
+    this.captureButton.disabled = true;
     try {
       const blob = await this.camera.capture();
-      if (this.disposed || !this.camera.active) return;
-      this.clearCapture();
-      this.captureUrl = URL.createObjectURL(blob);
-      this.capturedImage.src = this.captureUrl;
+      if (
+        this.disposed ||
+        !this.camera.active ||
+        version !== this.cameraVersion
+      )
+        return;
+      const nextUrl = URL.createObjectURL(blob);
+      const previousUrl = this.captureUrl;
+      this.photo = blob;
+      this.captureUrl = nextUrl;
+      this.capturedImage.src = nextUrl;
       this.captureResult.hidden = false;
       this.retakeButton.hidden = false;
+      if (previousUrl) URL.revokeObjectURL(previousUrl);
       this.setStatus('Photo captured in memory. No upload was made.');
       this.setError(null);
     } catch (error) {
@@ -202,11 +224,25 @@ export class CameraWorkspace {
           ? error
           : new CameraFailure('camera_capture');
       this.setError(failure.message);
+    } finally {
+      this.capturing = false;
+      this.captureButton.disabled = !this.camera.active || this.disposed;
     }
+  }
+
+  private async retake(): Promise<void> {
+    if (!this.photo || this.disposed) return;
+    if (!this.camera.active) await this.start();
+    if (!this.camera.active) return;
+    this.setStatus(
+      'Camera ready. Take another photo to replace the current one.',
+    );
+    this.captureButton.focus();
   }
 
   private clearCapture(): void {
     if (this.captureUrl) URL.revokeObjectURL(this.captureUrl);
+    this.photo = null;
     this.captureUrl = null;
     this.capturedImage.removeAttribute('src');
     this.captureResult.hidden = true;
@@ -217,13 +253,16 @@ export class CameraWorkspace {
     ++this.cameraVersion;
     this.options.onStopped?.();
     this.camera.stop();
-    this.clearCapture();
     this.captureButton.disabled = true;
     this.stopButton.disabled = true;
     this.startButton.disabled = this.busy || this.disposed;
     this.deviceRow.hidden = true;
     this.previewFrame.style.aspectRatio = '';
-    this.setStatus('Camera off');
+    this.setStatus(
+      this.photo
+        ? 'Camera off. Your captured photo is still available.'
+        : 'Camera off',
+    );
   }
 
   private handleCameraEnded(): void {
@@ -238,6 +277,7 @@ export class CameraWorkspace {
     this.disposed = true;
     window.removeEventListener('pagehide', this.handlePageHide);
     this.stop();
+    this.clearCapture();
   }
 
   private setStatus(message: string): void {
