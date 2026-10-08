@@ -1,0 +1,127 @@
+.studio-workspace {
+  width: min(100% - 40px, 920px);
+  margin: 0 auto;
+  padding: clamp(36px, 7vh, 80px) 0 64px;
+}
+.studio-workspace h2 {
+  margin: 0 0 12px;
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+}
+.studio-key {
+  padding: 22px 0 26px;
+  border-top: 1px solid #d8dcd5;
+  border-bottom: 1px solid #d8dcd5;
+}
+.studio-small {
+  margin: 0 0 16px;
+  max-width: 700px;
+  color: #555a53;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.studio-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+.studio-input {
+  min-width: min(100%, 320px);
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #b8bdb4;
+  border-radius: 8px;
+  background: #fff;
+  color: #20221f;
+  font: inherit;
+}
+.studio-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 16px 0;
+}
+.studio-stage {
+  padding-top: 28px;
+}
+.studio-frame {
+  position: relative;
+  width: 100%;
+  min-height: 260px;
+  aspect-ratio: 4 / 3;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #242925;
+}
+.studio-video,
+.studio-image {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.studio-video {
+  transform: scaleX(-1);
+}
+.studio-frame-message {
+  padding: 24px;
+  color: #fff;
+  text-align: center;
+}
+.studio-status {
+  min-height: 20px;
+  color: #555a53;
+  font-size: 14px;
+}
+.studio-error {
+  color: #9d2d29;
+  font-size: 14px;
+}
+.studio-dev {
+  margin-top: 40px;
+  padding-top: 24px;
+  border-top: 1px solid #d8dcd5;
+}
+.studio-dev details {
+  margin-top: 20px;
+}
+.studio-diagnostics {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.studio-link {
+  display: inline-block;
+  margin-top: 20px;
+  color: #315c46;
+}
+
+.studio-recovery {
+  margin-top: 24px;
+}
+
+.studio-recovery .studio-input {
+  margin-right: 10px;
+}
+
+.studio-recovered-image {
+  display: block;
+  max-width: min(100%, 600px);
+  max-height: 600px;
+  object-fit: contain;
+}
+@media (max-width: 650px) {
+  .studio-workspace {
+    width: min(100% - 24px, 920px);
+  }
+  .studio-frame {
+    aspect-ratio: 3 / 4;
+  }
+}

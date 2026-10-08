@@ -7,6 +7,7 @@ export type ProviderErrorCode =
   | 'invalid_request'
   | 'not_found'
   | 'provider_unavailable'
+  | 'provider_protocol'
   | 'network_or_cors'
   | 'invalid_response'
   | 'cancelled';
@@ -20,6 +21,8 @@ const messages: Record<ProviderErrorCode, string> = {
   invalid_request: 'fal rejected the request. Check its input and try again.',
   not_found: 'The requested fal endpoint is unavailable.',
   provider_unavailable: 'fal is unavailable. Try again later.',
+  provider_protocol:
+    'fal rejected a queue operation. This integration may need an update.',
   network_or_cors:
     'Could not reach fal from this browser. Check the connection and browser cross-origin access.',
   invalid_response: 'fal returned an unexpected response. Try again later.',
@@ -53,6 +56,7 @@ export function errorFromStatus(
   if (status === 403) return new ProviderError('permission', status);
   if (status === 429) return new ProviderError('rate_limit', status);
   if (status === 404) return new ProviderError('not_found', status);
+  if (status === 405) return new ProviderError('provider_protocol', status);
   if (status === 400 || status === 422)
     return new ProviderError('invalid_request', status);
   return new ProviderError('provider_unavailable', status);

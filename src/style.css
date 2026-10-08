@@ -101,6 +101,28 @@ select {
   cursor: pointer;
 }
 
+.external-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid #b8bdb4;
+  border-radius: 8px;
+  background: #fff;
+  color: #20221f;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.external-button:hover {
+  border-color: #315c46;
+}
+
+.external-button:focus-visible {
+  outline: 3px solid #315c46;
+  outline-offset: 2px;
+}
+
 button:focus-visible,
 select:focus-visible,
 input:focus-visible {

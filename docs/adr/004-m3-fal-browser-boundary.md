@@ -1,6 +1,6 @@
 # ADR-004 — Volatile browser fal boundary
 
-**Status:** Accepted for M3; real Safari and fal validation pending
+**Status:** Historical M3 decision; no-persistence policy superseded by ADR-006
 
 ## Context
 
@@ -11,6 +11,8 @@ The product has no application backend. A user supplies an API-scoped fal key in
 Keep the key in a page-owned `VolatileCredential` instance only. Clear it on page exit, explicit clear, or disposal; never place it in application configuration, a URL, browser storage, logs, or a global debug object. A dedicated `/provider` page and the M3 portion of `/dev/generation` accept it through a password input, clear the input after transfer, and expose a user-initiated read-only pricing probe.
 
 `FalClient` uses native `fetch` directly to fal HTTPS hosts with the key only in the `Authorization: Key` header, `credentials: omit`, `cache: no-store`, and no referrer. It owns queue submission, polling, result retrieval, best-effort cancellation, bounded retry of idempotent reads, error normalization, and transport response checks. `ProviderClient` accepts a model job whose future adapter supplies the endpoint, input and result parser. Submissions are never automatically retried because a lost response may still represent a billable job. No model adapter or generated-media pipeline is added in M3.
+
+**Later correction:** A live M4 edit request showed that fal accepts submissions at the full endpoint path (for example `/edit`) but serves status, result and cancel under the app alias. `FalClient` now follows the [official JavaScript queue client's routing](https://github.com/fal-ai/fal-js/blob/main/libs/client/src/queue.ts), which removes the endpoint subpath for follow-up requests. HTTP 405 is surfaced as a protocol mismatch without retrying the read.
 
 ## Alternatives
 
@@ -28,4 +30,4 @@ A browser-owned key is available to scripts running in that page, so deployment 
 
 ## Consequences
 
-M4 and later model adapters can supply model-specific IDs, inputs, and parsers without changing credential handling or queue transport. The user must re-enter the key after leaving or reloading the page. Real provider calls remain explicitly user initiated.
+M4 and later model adapters can supply model-specific IDs, inputs, and parsers without changing credential handling or queue transport. The original M3 policy required key re-entry after leaving or reloading; ADR-006 supersedes that policy. Real provider calls remain explicitly user initiated.

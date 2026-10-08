@@ -1,4 +1,4 @@
-/** A page-lifetime credential. No serialization, storage, or global registration. */
+/** In-memory credential; persistence is opt-in after verification elsewhere. */
 export class VolatileCredential {
   #value: string | null = null;
 

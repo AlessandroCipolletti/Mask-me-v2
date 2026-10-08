@@ -1,6 +1,8 @@
 import type {
   ProviderClient,
   ProviderJob,
+  ProviderReadJob,
+  ProviderResult,
   ProviderRunOptions,
 } from './ProviderClient';
 import {
@@ -20,7 +22,7 @@ import { VolatileCredential } from './VolatileCredential';
 type Fetcher = typeof fetch;
 const QUEUE_ORIGIN = 'https://queue.fal.run';
 const PLATFORM_ORIGIN = 'https://api.fal.ai';
-const POLL_MS = 1_500;
+const POLL_MS = 5_000;
 
 function record(value: unknown): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -41,6 +43,16 @@ function safeRequestId(value: unknown): string {
     throw new ProviderError('invalid_response');
   }
   return value;
+}
+
+/** fal queue operations use the app alias, not an endpoint path such as /edit. */
+function queueRequestBase(modelId: string, requestId: string): string {
+  const parts = modelId.split('/');
+  const appParts =
+    parts[0] === 'workflows' || parts[0] === 'comfy'
+      ? parts.slice(0, 3)
+      : parts.slice(0, 2);
+  return `${QUEUE_ORIGIN}/${appParts.join('/')}/requests/${requestId}`;
 }
 
 function serializeInput(input: unknown): string {
@@ -149,10 +161,10 @@ export class FalClient implements ProviderClient {
   async run<T>(
     job: ProviderJob<T>,
     options: ProviderRunOptions = {},
-  ): Promise<T> {
+  ): Promise<ProviderResult<T>> {
     const modelId = safeModelId(job.modelId);
     const controller = new AbortController();
-    const onAbort = () => controller.abort();
+    const onAbort = () => controller.abort(options.signal?.reason);
     options.signal?.addEventListener('abort', onAbort, { once: true });
     if (options.signal?.aborted) controller.abort();
     let requestId: string | null = null;
@@ -171,40 +183,24 @@ export class FalClient implements ProviderClient {
         ),
       );
       requestId = safeRequestId(submitted['request_id']);
-      const base = `${QUEUE_ORIGIN}/${modelId}/requests/${requestId}`;
-      while (true) {
-        if (controller.signal.aborted) throw new ProviderError('cancelled');
-        const status = record(
-          await this.readWithRetry(
-            `${base}/status`,
-            controller.signal,
-            'queue_status',
-          ),
-        );
-        if (status['status'] === 'COMPLETED') break;
-        if (status['status'] === 'IN_QUEUE') options.onPhase?.('queued');
-        else if (status['status'] === 'IN_PROGRESS')
-          options.onPhase?.('running');
-        else throw new ProviderError('invalid_response');
-        await wait(this.pollMs, controller.signal);
-      }
-      options.onPhase?.('retrieving');
-      const result = await this.readWithRetry(
-        base,
+      options.onSubmitted?.(requestId);
+      return await this.pollAndRead(
+        job,
+        modelId,
+        requestId,
         controller.signal,
-        'queue_result',
+        options,
       );
-      if (controller.signal.aborted) throw new ProviderError('cancelled');
-      try {
-        return job.parse(result);
-      } catch {
-        throw new ProviderError('invalid_response');
-      }
     } catch (error) {
-      if (controller.signal.aborted && requestId) {
+      if (
+        controller.signal.aborted &&
+        requestId &&
+        controller.signal.reason !== 'pagehide' &&
+        controller.signal.reason !== 'pause'
+      ) {
         // Best effort. A running job may be impossible to cancel or may still be billed.
         try {
-          await this.cancel(modelId, requestId);
+          await this.cancel(queueRequestBase(modelId, requestId));
         } catch {
           /* retain local cancellation */
         }
@@ -212,6 +208,62 @@ export class FalClient implements ProviderClient {
       throw normalizeProviderFailure(error, controller.signal);
     } finally {
       options.signal?.removeEventListener('abort', onAbort);
+    }
+  }
+
+  async resume<T>(
+    job: ProviderReadJob<T>,
+    requestId: string,
+    options: ProviderRunOptions = {},
+  ): Promise<ProviderResult<T>> {
+    const modelId = safeModelId(job.modelId);
+    const id = safeRequestId(requestId);
+    const controller = new AbortController();
+    const onAbort = () => controller.abort();
+    options.signal?.addEventListener('abort', onAbort, { once: true });
+    if (options.signal?.aborted) controller.abort();
+    try {
+      return await this.pollAndRead(
+        job,
+        modelId,
+        id,
+        controller.signal,
+        options,
+      );
+    } catch (error) {
+      // Stopping a read-only recovery must not cancel the original paid job.
+      throw normalizeProviderFailure(error, controller.signal);
+    } finally {
+      options.signal?.removeEventListener('abort', onAbort);
+    }
+  }
+
+  private async pollAndRead<T>(
+    job: ProviderReadJob<T>,
+    modelId: string,
+    requestId: string,
+    signal: AbortSignal,
+    options: ProviderRunOptions,
+  ): Promise<ProviderResult<T>> {
+    const base = queueRequestBase(modelId, requestId);
+    while (true) {
+      if (signal.aborted) throw new ProviderError('cancelled');
+      const status = record(
+        await this.readWithRetry(`${base}/status`, signal, 'queue_status'),
+      );
+      if (status['status'] === 'COMPLETED') break;
+      if (status['status'] === 'IN_QUEUE') options.onPhase?.('queued');
+      else if (status['status'] === 'IN_PROGRESS') options.onPhase?.('running');
+      else throw new ProviderError('invalid_response');
+      await wait(this.pollMs, signal);
+    }
+    options.onPhase?.('retrieving');
+    const result = await this.readWithRetry(base, signal, 'queue_result');
+    if (signal.aborted) throw new ProviderError('cancelled');
+    try {
+      return { data: job.parse(result), requestId };
+    } catch {
+      throw new ProviderError('invalid_response');
     }
   }
 
@@ -237,12 +289,12 @@ export class FalClient implements ProviderClient {
     }
   }
 
-  private async cancel(modelId: string, requestId: string): Promise<void> {
+  private async cancel(base: string): Promise<void> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5_000);
     try {
       await this.request(
-        `${QUEUE_ORIGIN}/${modelId}/requests/${requestId}/cancel`,
+        `${base}/cancel`,
         {
           method: 'PUT',
           signal: controller.signal,
