@@ -1,8 +1,44 @@
 # Project status
 
-## Current milestone: M1 — Camera and tracking spike
+## Current milestone: M2 — Three.js runtime spike
 
-M0 is accepted. M1 implementation is complete pending the manual webcam and Safari/Chrome checks below. M2 has not started. The external specification pack at `/Users/cippo/Desktop/avatar3d-codex-spec-v3/` remains authoritative.
+M0 and M1 are accepted. M2 implementation is complete pending the focused Safari/Chrome visual and performance checks below. M3 has not started. The external specification pack at `/Users/cippo/Desktop/avatar3d-codex-spec-v3/` remains authoritative.
+
+| M2 requirement                                                   | Status                | Evidence / remaining check                                                                                                                                                                |
+| ---------------------------------------------------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Semantic `AvatarControlState` and canonical axes                 | VERIFIED              | Pure contract has no MediaPipe/Three.js dependency; copy and neutral-state tests pass; +X right, +Y up, +Z forward and radians are documented.                                            |
+| Topology-independent avatar/rig adapter                          | VERIFIED              | `AvatarRigAdapter` accepts only semantic state; fixture mapping and disposal have focused tests.                                                                                          |
+| Complete volumetric head follows one root                        | TESTED                | Unit test checks skull/hair/ears/jaw hierarchy; in-app Chromium visual check at yaw +45° showed side and rear-hair volume.                                                                |
+| Independent blink, gaze, brows, jaw and mouth on fixture         | TESTED                | Focused adapter assertions and in-app Chromium checks for left blink and jaw 100%; all semantic controls are exposed in the lab.                                                          |
+| Golden reference pose suite                                      | VERIFIED              | Deterministic tests cover neutral, angle extremes, independent blink, gaze, jaw, expressions, brows and combinations.                                                                     |
+| Reusable synthetic animation source                              | VERIFIED              | Sequence and continuous sweep run without webcam; tests verify timing, manual override and deterministic sampling.                                                                        |
+| `/dev/avatar` controls and diagnostics                           | TESTED                | In-app Chromium lab exercised pose selection and sweep, then reopened after navigation; it showed state, nodes, bounds, WebGL capability, FPS, frame time, draw calls, triangles and DPR. |
+| Renderer, rig and GPU resource cleanup                           | VERIFIED              | Code inspection confirms geometry/material disposal, renderer disposal, context release, observer/listener removal and page-exit handling; fixture disposal test passes.                  |
+| WebGL2 baseline, DPR cap, resize and visibility/context handling | VERIFIED              | Renderer explicitly requests WebGL2, caps DPR at 2, resizes camera/canvas and pauses/restarts on visibility and context events; WebGL2 lab booted in Chromium.                            |
+| 60 FPS target on user's browsers/hardware                        | DEFERRED_VERIFICATION | In-app Chromium lab reported approximately 60 FPS; Safari and user's hardware need manual measurement.                                                                                    |
+| Development-only 3D tooling and production exclusion             | VERIFIED              | Production build has no Three.js/avatar chunk; debug build contains `/dev/avatar` and the fixture.                                                                                        |
+| Safari visual behavior and repeated GPU lifecycle                | DEFERRED_VERIFICATION | User must inspect pose quality, orbit, resizing, tab background/foreground and reload/revisit behavior in Safari.                                                                         |
+
+M2 status counts: **VERIFIED 7 · TESTED 3 · DEFERRED_VERIFICATION 2 · BLOCKED 0 · OPEN_IMPLEMENTATION 0**.
+
+### Manual M2 verification requested
+
+Run `pnpm dev` and open `/dev/avatar` in Safari first, then Chrome. Select yaw ±45° and orbit behind the head to confirm true side/rear geometry; try blink left/right/both, gaze, brows, jaw 100%, smile, pucker and a combined pose. Run the reference sequence and continuous sweep. Check the reported FPS, resize the window, hide/restore the tab, and revisit the page. Report browser/version, FPS and any visual or cleanup defect. No webcam or fal key is needed.
+
+### M2 decisions and known issues
+
+- [ADR-003](docs/adr/003-m2-avatar-runtime.md): canonical semantic state, rig adapter, WebGL2 renderer ownership, deterministic procedural fixture and reusable synthetic source.
+- The fixture is deliberately simple and has no morph targets. It proves the runtime contract, not arbitrary generated-avatar rigging; the latter remains M7/M8.
+- The debug avatar chunk is about 550 kB minified and triggers Vite's size advisory. The production build excludes it.
+- Real Safari behavior, user-machine FPS and repeated GPU cleanup remain unverified until manual testing.
+
+### M2 validation
+
+`pnpm check` passes strict typecheck, ESLint, Prettier, 27 focused tests, production build and debug build. The in-app Chromium browser rendered neutral, yaw +45°, left blink, jaw 100%, and continuous sweep at approximately 60 FPS in the lab; navigation away and back restarted WebGL successfully. `git diff --check` passes. No paid provider or webcam call was made.
+
+## Previous milestone: M1 — Camera and tracking spike
+
+M1 was completed and accepted before M2 work began. The following records its original completion evidence and remaining historical manual checks.
 
 | M1 requirement                                                               | Status                | Evidence / remaining check                                                                                                          |
 | ---------------------------------------------------------------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |

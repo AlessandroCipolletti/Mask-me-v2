@@ -16,6 +16,16 @@ try {
 
   if (
     import.meta.env.MODE !== 'production' &&
+    location.pathname === '/dev/avatar'
+  ) {
+    void import('./dev/avatarPage')
+      .then(({ mountAvatarLab }) => mountAvatarLab(app))
+      .catch(() => {
+        app.textContent =
+          'The avatar lab could not load. Check WebGL2 and reload.';
+      });
+  } else if (
+    import.meta.env.MODE !== 'production' &&
     location.pathname === '/dev/tracking'
   ) {
     void import('./dev/trackingPage')
